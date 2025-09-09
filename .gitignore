@@ -23,3 +23,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .vercel
+
+# Firebase service account keys
+findmydocs-489b9-firebase-adminsdk-fbsvc-9b495add88.json
+*firebase*adminsdk*.json

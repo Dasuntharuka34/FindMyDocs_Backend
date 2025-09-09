@@ -42,6 +42,14 @@ const createLeaveRequest = async (req, res) => {
       return res.status(400).json({ message: 'Please provide all required fields' });
     }
 
+    // Handle file attachment - convert buffer to base64 if file is uploaded
+    let attachmentData = null;
+    if (req.file) {
+      const base64 = req.file.buffer.toString('base64');
+      const mimeType = req.file.mimetype;
+      attachmentData = `data:${mimeType};base64,${base64}`;
+    }
+
     // Determine initial stage based on the submitter's role
     const initialStageIndex = submitterRoleToInitialStageIndex[requesterRole] || 0;
     const initialStatus = approvalStages[initialStageIndex].name;
@@ -56,7 +64,7 @@ const createLeaveRequest = async (req, res) => {
       remarks: remarks || '',
       startDate,
       endDate,
-      attachments: req.file ? req.file.path : null,
+      attachments: attachmentData, // Store base64 data instead of file path
       status: initialStatus,
       currentStageIndex: initialStageIndex,
       submittedDate: new Date(),
@@ -314,13 +322,8 @@ const deleteLeaveRequest = async (req, res) => {
 };
 
 export {
-  createLeaveRequest,
-  getLeaveRequests,
-  getLeaveRequestById,
-  getLeaveRequestsByUserId, // Renamed and exported correctly
-  approveLeaveRequest,
-  rejectLeaveRequest,
-  deleteLeaveRequest,
-  // --- EXPORT THE NEW FUNCTION ---
-  getPendingLeaveRequests
+    approveLeaveRequest, createLeaveRequest, deleteLeaveRequest, getLeaveRequestById, getLeaveRequests, getLeaveRequestsByUserId,
+    // --- EXPORT THE NEW FUNCTION ---
+    getPendingLeaveRequests, rejectLeaveRequest
 };
+

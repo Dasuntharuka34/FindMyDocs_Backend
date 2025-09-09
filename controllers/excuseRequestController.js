@@ -45,6 +45,14 @@ const createExcuseRequest = async (req, res) => {
       return res.status(400).json({ message: 'Please provide all required fields' });
     }
 
+    // Handle file attachment - convert buffer to base64 if file is uploaded
+    let attachmentData = null;
+    if (req.file) {
+      const base64 = req.file.buffer.toString('base64');
+      const mimeType = req.file.mimetype;
+      attachmentData = `data:${mimeType};base64,${base64}`;
+    }
+
     const initialStageIndex = submitterRoleToInitialStageIndex[studentRole] || 1;
     const initialStatus = approvalStages[initialStageIndex].name;
     const firstApproverRole = approvalStages[initialStageIndex].approverRole;
@@ -62,7 +70,7 @@ const createExcuseRequest = async (req, res) => {
       reason,
       reasonDetails,
       lectureAbsents,
-      attachments: req.file ? req.file.path : null,
+      attachments: attachmentData, // Store base64 data instead of file path
       status: initialStatus,
       currentStageIndex: initialStageIndex,
       submittedDate: new Date(),
@@ -119,11 +127,11 @@ const getExcuseRequestById = async (req, res) => {
   try {
     const request = await ExcuseRequest.findById(id);
     if (!request) return res.status(404).json({ message: 'Excuse request not found' });
-    
+
     // Populate approver information if available
     const populatedRequest = await ExcuseRequest.findById(id)
       .populate('approvals.approverId', 'name email role');
-    
+
     res.json(populatedRequest || request);
   } catch (error) {
     console.error("Error fetching excuse request by ID:", error);
@@ -301,12 +309,6 @@ const deleteExcuseRequest = async (req, res) => {
 };
 
 export {
-  createExcuseRequest,
-  getExcuseRequests,
-  getExcuseRequestById,
-  getExcuseRequestsByUserId,
-  approveExcuseRequest,
-  rejectExcuseRequest,
-  deleteExcuseRequest,
-  getPendingExcuseApprovals
+    approveExcuseRequest, createExcuseRequest, deleteExcuseRequest, getExcuseRequestById, getExcuseRequests, getExcuseRequestsByUserId, getPendingExcuseApprovals, rejectExcuseRequest
 };
+

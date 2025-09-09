@@ -1,12 +1,12 @@
 import express from 'express';
-const router = express.Router();
 import {
-  getNotificationsByUser,
-  createNotification,
-  markNotificationAsRead,
-  deleteNotification,
-  deleteAllNotificationsByUser
+    createNotification,
+    deleteAllNotificationsByUser,
+    deleteNotification,
+    getNotificationsByUser,
+    markNotificationAsRead
 } from '../controllers/notificationController.js';
+const router = express.Router();
 
 router.route('/byUser/:userId')
   .get(getNotificationsByUser)

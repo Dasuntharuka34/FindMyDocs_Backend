@@ -1,19 +1,19 @@
 import express from 'express';
+import fs from 'fs';
 import multer from 'multer';
 import path from 'path';
-import fs from 'fs';
 
 // Import all necessary controller functions
 import {
-  createLeaveRequest,
-  getLeaveRequests,
-  getLeaveRequestById,
-  getLeaveRequestsByUserId, // Renamed and imported correctly
   approveLeaveRequest,
-  rejectLeaveRequest,
+  createLeaveRequest,
   deleteLeaveRequest,
+  getLeaveRequestById,
+  getLeaveRequests,
+  getLeaveRequestsByUserId,
   // --- IMPORT THE NEW FUNCTION ---
-  getPendingLeaveRequests
+  getPendingLeaveRequests,
+  rejectLeaveRequest
 } from '../controllers/leaveRequestController.js';
 
 const router = express.Router();
@@ -24,16 +24,8 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir);
 }
 
-// Configure storage for multer to handle file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    // Create a unique filename with a timestamp and the original file extension
-    cb(null, `${file.fieldname}-${Date.now()}${path.extname(file.originalname)}`);
-  },
-});
+// Configure storage for multer to handle file uploads in memory
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage: storage,

@@ -293,7 +293,14 @@ const updateUser = async (req, res) => {
   const { id } = req.params;
 
   const { name, email, nic, mobile, department, indexNumber } = req.body;
-  const profilePicturePath = req.file ? `/uploads/profile_pictures/${req.file.filename}` : null;
+
+  // Handle profile picture - convert buffer to base64 if file is uploaded
+  let profilePictureData = null;
+  if (req.file) {
+    const base64 = req.file.buffer.toString('base64');
+    const mimeType = req.file.mimetype;
+    profilePictureData = `data:${mimeType};base64,${base64}`;
+  }
 
   try {
     const user = await User.findById(id);
@@ -333,8 +340,8 @@ const updateUser = async (req, res) => {
       user.indexNumber = undefined;
     }
 
-    if (profilePicturePath) {
-      user.profilePicture = profilePicturePath;
+    if (profilePictureData) {
+      user.profilePicture = profilePictureData;
     } else if (req.body.removeProfilePicture === 'true') {
       user.profilePicture = null;
     }

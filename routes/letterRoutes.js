@@ -1,41 +1,18 @@
 import express from 'express';
-import multer from 'multer'; // multer import කරන්න
-import path from 'path'; // path module import කරන්න
-import fs from 'fs'; // fs (file system) module import කරන්න
-
-const router = express.Router();
+import multer from 'multer';
+import path from 'path';
 import {
   createLetter,
+  getLetterById,
   getLettersByUserId,
-  updateLetterStatus,
   getPendingApprovals,
-  getLetterById
+  updateLetterStatus
 } from '../controllers/letterController.js';
 
-// Directory creation skipped in Vercel serverless environment
-const uploadsDir = 'uploads/attachments/';
-if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
-  if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir);
-  }
-}
+const router = express.Router();
 
-// Configure multer storage based on environment
-let storage;
-if (process.env.NODE_ENV === 'production' && process.env.VERCEL) {
-  // Use memory storage in Vercel serverless environment
-  storage = multer.memoryStorage();
-} else {
-  // Use disk storage in development/local environment
-  storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-      cb(null, uploadsDir);
-    },
-    filename: (req, file, cb) => {
-      cb(null, `${file.fieldname}-${Date.now()}${path.extname(file.originalname)}`);
-    },
-  });
-}
+// Configure storage for multer to handle file uploads in memory
+const storage = multer.memoryStorage();
 
 // Multer upload middleware
 const upload = multer({

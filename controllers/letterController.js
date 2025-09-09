@@ -27,7 +27,14 @@ const submitterRoleToInitialStageIndex = {
 // @access  Private (e.g., Student, Staff, Lecturer, HOD, Dean, VC)
 const createLetter = async (req, res) => {
     const { type, reason, date, studentId, student, submitterRole } = req.body;
-    const attachmentsPath = req.file ? req.file.path : null; 
+
+    // Handle file attachment - convert buffer to base64 if file is uploaded
+    let attachmentData = null;
+    if (req.file) {
+      const base64 = req.file.buffer.toString('base64');
+      const mimeType = req.file.mimetype;
+      attachmentData = `data:${mimeType};base64,${base64}`;
+    }
 
     const initialStageIndex = submitterRoleToInitialStageIndex[submitterRole] !== undefined
                                ? submitterRoleToInitialStageIndex[submitterRole]
@@ -44,7 +51,7 @@ const createLetter = async (req, res) => {
             status: initialStatus,
             currentStageIndex: initialStageIndex,
             submittedDate: new Date(),
-            attachments: attachmentsPath 
+            attachments: attachmentData // Store base64 data instead of file path
         });
         res.status(201).json(letter);
     } catch (error) {
@@ -143,5 +150,5 @@ const updateLetterStatus = async (req, res) => {
     }
 };
 
-export { createLetter, getLettersByUserId, getLetterById, updateLetterStatus, getPendingApprovals };
+export { createLetter, getLetterById, getLettersByUserId, getPendingApprovals, updateLetterStatus };
 

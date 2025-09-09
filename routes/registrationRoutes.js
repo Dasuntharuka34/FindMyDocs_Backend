@@ -1,10 +1,10 @@
 import express from 'express';
-const router = express.Router();
 import {
-  getPendingRegistrations,
-  createRegistration,
-  deleteRegistration,
+    createRegistration,
+    deleteRegistration,
+    getPendingRegistrations,
 } from '../controllers/registrationController.js';
+const router = express.Router();
 
 router.route('/pending').get(getPendingRegistrations);
 router.route('/').post(createRegistration);

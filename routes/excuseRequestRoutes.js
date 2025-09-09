@@ -1,17 +1,17 @@
 import express from 'express';
+import fs from 'fs';
 import multer from 'multer';
 import path from 'path';
-import fs from 'fs';
 
 import {
-  createExcuseRequest,
-  getExcuseRequests,
-  getExcuseRequestById,
-  getExcuseRequestsByUserId,
   approveExcuseRequest,
-  rejectExcuseRequest,
+  createExcuseRequest,
   deleteExcuseRequest,
-  getPendingExcuseApprovals
+  getExcuseRequestById,
+  getExcuseRequests,
+  getExcuseRequestsByUserId,
+  getPendingExcuseApprovals,
+  rejectExcuseRequest
 } from '../controllers/excuseRequestController.js';
 
 const router = express.Router();
@@ -22,15 +22,8 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir);
 }
 
-// Configure storage for multer to handle file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    cb(null, `${file.fieldname}-${Date.now()}${path.extname(file.originalname)}`);
-  },
-});
+// Configure storage for multer to handle file uploads in memory
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage: storage,

@@ -14,23 +14,37 @@ const __dirname = path.dirname(__filename);
 // This will resolve to your_backend_root/uploads/profile_pictures
 const profileUploadsDir = path.join(__dirname, '..', 'uploads', 'profile_pictures');
 
-// Ensure the directory exists
-if (!fs.existsSync(profileUploadsDir)) {
-  fs.mkdirSync(profileUploadsDir, { recursive: true });
-  console.log(`Created uploads directory at: ${profileUploadsDir}`);
+// Ensure the directory exists (skip in Vercel serverless environment)
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  try {
+    if (!fs.existsSync(profileUploadsDir)) {
+      fs.mkdirSync(profileUploadsDir, { recursive: true });
+      console.log(`Created uploads directory at: ${profileUploadsDir}`);
+    }
+  } catch (error) {
+    console.log(`Could not create uploads directory: ${error.message}`);
+  }
 }
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, profileUploadsDir); // Use the robustly defined absolute path
-  },
-  filename: (req, file, cb) => {
-    // Use user ID or a unique ID to name the profile picture
-    // For simplicity, using Date.now(). In a real app, use req.user._id if authenticated
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'profile-' + uniqueSuffix + path.extname(file.originalname));
-  },
-});
+// Configure multer storage based on environment
+let storage;
+if (process.env.NODE_ENV === 'production' && process.env.VERCEL) {
+  // Use memory storage in Vercel serverless environment
+  storage = multer.memoryStorage();
+} else {
+  // Use disk storage in development/local environment
+  storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, profileUploadsDir); // Use the robustly defined absolute path
+    },
+    filename: (req, file, cb) => {
+      // Use user ID or a unique ID to name the profile picture
+      // For simplicity, using Date.now(). In a real app, use req.user._id if authenticated
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      cb(null, 'profile-' + uniqueSuffix + path.extname(file.originalname));
+    },
+  });
+}
 
 const upload = multer({
   storage: storage,

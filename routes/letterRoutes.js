@@ -12,20 +12,30 @@ import {
   getLetterById
 } from '../controllers/letterController.js';
 
+// Directory creation skipped in Vercel serverless environment
 const uploadsDir = 'uploads/attachments/';
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir);
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir);
+  }
 }
 
-// Multer storage configuration for letter attachments
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    cb(null, `${file.fieldname}-${Date.now()}${path.extname(file.originalname)}`);
-  },
-});
+// Configure multer storage based on environment
+let storage;
+if (process.env.NODE_ENV === 'production' && process.env.VERCEL) {
+  // Use memory storage in Vercel serverless environment
+  storage = multer.memoryStorage();
+} else {
+  // Use disk storage in development/local environment
+  storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, uploadsDir);
+    },
+    filename: (req, file, cb) => {
+      cb(null, `${file.fieldname}-${Date.now()}${path.extname(file.originalname)}`);
+    },
+  });
+}
 
 // Multer upload middleware
 const upload = multer({

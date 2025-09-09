@@ -38,23 +38,35 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const uploadsBaseDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsBaseDir)) {
-  fs.mkdirSync(uploadsBaseDir, { recursive: true });
-  console.log(`Created base uploads directory at: ${uploadsBaseDir}`);
+try {
+  if (!fs.existsSync(uploadsBaseDir)) {
+    fs.mkdirSync(uploadsBaseDir, { recursive: true });
+    console.log(`Created base uploads directory at: ${uploadsBaseDir}`);
+  }
+} catch (err) {
+  console.error(`Failed to create uploads directory: ${err.message}`);
 }
 
 // Ensure profile_pictures directory exists
 const profilePicturesDir = path.join(uploadsBaseDir, 'profile_pictures');
-if (!fs.existsSync(profilePicturesDir)) {
-  fs.mkdirSync(profilePicturesDir, { recursive: true });
-  console.log(`Created profile_pictures directory at: ${profilePicturesDir}`);
+try {
+  if (!fs.existsSync(profilePicturesDir)) {
+    fs.mkdirSync(profilePicturesDir, { recursive: true });
+    console.log(`Created profile_pictures directory at: ${profilePicturesDir}`);
+  }
+} catch (err) {
+  console.error(`Failed to create profile_pictures directory: ${err.message}`);
 }
 
 // Ensure documents directory exists
 const documentsDir = path.join(uploadsBaseDir, 'documents');
-if (!fs.existsSync(documentsDir)) {
-  fs.mkdirSync(documentsDir, { recursive: true });
-  console.log(`Created documents directory at: ${documentsDir}`);
+try {
+  if (!fs.existsSync(documentsDir)) {
+    fs.mkdirSync(documentsDir, { recursive: true });
+    console.log(`Created documents directory at: ${documentsDir}`);
+  }
+} catch (err) {
+  console.error(`Failed to create documents directory: ${err.message}`);
 }
 
 // Serve uploads folder publicly

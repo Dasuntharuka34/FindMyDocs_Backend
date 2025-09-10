@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { bucket } from '../config/firebase.js';
+import { uploadToBlob } from '../config/vercelBlob.js';
 import ExcuseRequest from '../models/ExcuseRequest.js';
 import LeaveRequest from '../models/LeaveRequest.js';
 import Letter from '../models/Letter.js';
@@ -295,7 +295,7 @@ const updateUser = async (req, res) => {
 
   const { name, email, nic, mobile, department, indexNumber } = req.body;
 
-  // Handle profile picture - upload to Firebase Storage if file is uploaded
+  // Handle profile picture - upload to Vercel Blob Storage if file is uploaded
   let profilePictureData = null;
   if (req.file) {
     try {
@@ -303,29 +303,14 @@ const updateUser = async (req, res) => {
       const timestamp = Date.now();
       const filename = `profile-${id}-${timestamp}.${req.file.originalname.split('.').pop()}`;
 
-      // Upload to Firebase Storage
-      const file = bucket.file(filename);
-      const stream = file.createWriteStream({
-        metadata: {
-          contentType: req.file.mimetype,
-        },
-      });
-
-      await new Promise((resolve, reject) => {
-        stream.on('error', reject);
-        stream.on('finish', resolve);
-        stream.end(req.file.buffer);
-      });
-
-      // Get download URL
-      const [url] = await file.getSignedUrl({
-        action: 'read',
-        expires: '03-09-2491', // Far future date for permanent access
+      // Upload to Vercel Blob Storage
+      const url = await uploadToBlob(req.file.buffer, filename, {
+        contentType: req.file.mimetype,
       });
 
       profilePictureData = url;
     } catch (uploadError) {
-      console.error('Error uploading to Firebase:', uploadError);
+      console.error('Error uploading to Vercel Blob:', uploadError);
       return res.status(500).json({ message: 'Error uploading profile picture', error: uploadError.message });
     }
   }

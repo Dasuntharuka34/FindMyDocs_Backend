@@ -17,17 +17,35 @@ if (!cached) {
 }
 
 async function connectDB() {
-  if (cached.conn) {
-    return cached.conn;
-  }
+  try {
+    if (cached.conn) {
+      return cached.conn;
+    }
 
-  if (!cached.promise) {
-    cached.promise = mongoose.connect(MONGO_URI).then((mongoose) => {
-      return mongoose;
-    });
+    if (!cached.promise) {
+      const options = {
+        serverSelectionTimeoutMS: 30000, // Timeout after 30s instead of 10s
+        socketTimeoutMS: 45000, // Close sockets after 45s
+      };
+
+      cached.promise = mongoose.connect(MONGO_URI, options)
+        .then((mongoose) => {
+          console.log('MongoDB connected successfully');
+          return mongoose;
+        })
+        .catch((error) => {
+          console.error('MongoDB connection error:', error);
+          cached.promise = null;
+          throw error;
+        });
+    }
+
+    cached.conn = await cached.promise;
+    return cached.conn;
+  } catch (error) {
+    console.error('Database connection error:', error);
+    throw error;
   }
-  cached.conn = await cached.promise;
-  return cached.conn;
 }
 
 export default connectDB;

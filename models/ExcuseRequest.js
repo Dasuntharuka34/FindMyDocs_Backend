@@ -83,6 +83,13 @@ const excuseRequestSchema = mongoose.Schema({
   attachments: {
     type: String // File path or URL
   },
+  fileDetails: {
+    type: {
+      originalSize: String,
+      compressedSize: String,
+      compressionRatio: String
+    }
+  },
   status: {
     type: String,
     enum: ['Submitted', 'Pending Lecturer Approval', 'Pending HOD Approval', 'Pending Dean Approval', 'Pending VC Approval', 'Approved', 'Rejected'],

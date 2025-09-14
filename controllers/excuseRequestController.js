@@ -2,7 +2,8 @@
 
 import ExcuseRequest from '../models/ExcuseRequest.js';
 import Notification from '../models/Notification.js';
-import User from '../models/User.js'; // Make sure to import User model
+import User from '../models/User.js';
+import { put, del } from '@vercel/blob';
 
 // --- APPROVAL STAGE DEFINITIONS ---
 const approvalStages = [
@@ -25,6 +26,9 @@ const submitterRoleToInitialStageIndex = {
 // --- CREATE EXCUSE REQUEST ---
 const createExcuseRequest = async (req, res) => {
   try {
+    console.log('Request body:', req.body);
+    console.log('Request file:', req.file);
+
     const {
       studentId,
       studentName,
@@ -45,12 +49,39 @@ const createExcuseRequest = async (req, res) => {
       return res.status(400).json({ message: 'Please provide all required fields' });
     }
 
-    // Handle file attachment - convert buffer to base64 if file is uploaded
-    let attachmentData = null;
+    // Handle file attachment with validation and upload
+    let attachmentUrl = null;
+    let fileDetails = null;
     if (req.file) {
-      const base64 = req.file.buffer.toString('base64');
-      const mimeType = req.file.mimetype;
-      attachmentData = `data:${mimeType};base64,${base64}`;
+      try {
+        // Validate file type
+        if (!['image/jpeg', 'image/png', 'application/pdf'].includes(req.file.mimetype)) {
+          return res.status(400).json({
+            message: 'Invalid file type',
+            error: 'Only JPEG, PNG and PDF files are allowed'
+          });
+        }
+
+        // Generate unique filename
+        const timestamp = Date.now();
+        const filename = `excuse-requests/${timestamp}-${req.file.originalname}`;
+
+        // Upload to Vercel Blob
+        const blob = await put(filename, req.file.buffer, {
+          access: 'public',
+          contentType: req.file.mimetype
+        });
+
+        attachmentUrl = blob.url;
+        console.log('File uploaded successfully to Vercel Blob:', attachmentUrl);
+
+      } catch (error) {
+        console.error('File upload error:', error);
+        return res.status(500).json({
+          message: 'Error uploading file',
+          error: error.message
+        });
+      }
     }
 
     const initialStageIndex = submitterRoleToInitialStageIndex[studentRole] || 1;
@@ -70,7 +101,8 @@ const createExcuseRequest = async (req, res) => {
       reason,
       reasonDetails,
       lectureAbsents,
-      attachments: attachmentData, // Store base64 data instead of file path
+      attachments: attachmentUrl, // Store Vercel Blob URL
+      fileDetails: fileDetails || null, // Store compression details if available
       status: initialStatus,
       currentStageIndex: initialStageIndex,
       submittedDate: new Date(),
@@ -300,8 +332,19 @@ const deleteExcuseRequest = async (req, res) => {
 
     if (!request) return res.status(404).json({ message: 'Excuse request not found' });
 
+    // Delete associated file if it exists
+    if (request.attachments) {
+      try {
+        await del(request.attachments);
+        console.log('File deleted successfully from Vercel Blob');
+      } catch (error) {
+        console.error('Error deleting file from Vercel Blob:', error);
+        // Continue with request deletion even if file deletion fails
+      }
+    }
+
     await request.deleteOne();
-    res.json({ message: 'Excuse request removed' });
+    res.json({ message: 'Excuse request and associated files removed' });
   } catch (error) {
     console.error("Error deleting excuse request:", error);
     res.status(500).json({ message: 'Server error deleting excuse request', error: error.message });

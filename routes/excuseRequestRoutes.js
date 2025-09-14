@@ -22,27 +22,29 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir);
 }
 
-// Configure storage for multer to handle file uploads in memory
+// Configure multer for handling file uploads using memory storage
 const storage = multer.memoryStorage();
+
+const fileFilter = (req, file, cb) => {
+  const allowedTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Invalid file type. Only JPEG, PNG and PDF files are allowed.'));
+  }
+};
 
 const upload = multer({
   storage: storage,
-  limits: { fileSize: 1024 * 1024 * 10 }, // 10MB file size limit
-  fileFilter: (req, file, cb) => {
-    const filetypes = /jpeg|jpg|png|pdf|doc|docx/;
-    const mimetype = filetypes.test(file.mimetype);
-    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-
-    if (mimetype && extname) {
-      return cb(null, true);
-    }
-    cb(new Error('Only .pdf, .jpg, .jpeg, .png, .doc, .docx formats are allowed!'));
-  }
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB file size limit
+  },
+  fileFilter: fileFilter
 });
 
 // @desc    Submit a new excuse request form with an optional file upload
 // @route   POST /api/excuserequests
-router.post('/', upload.single('medicalForm'), createExcuseRequest);
+router.post('/', upload.single('medicalCertificate'), createExcuseRequest);
 
 // @desc    Get all excuse requests (for approvers)
 // @route   GET /api/excuserequests

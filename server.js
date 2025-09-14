@@ -34,9 +34,14 @@ app.use('/api/excuserequests', excuseRequestRoutes);
 app.use('/api/leaverequests', leaveRequestRoutes);
 
 // --- Root Route ---
-app.get('/api', (req, res) => {
-  res.send('API is running...');
+app.get('/', (req, res) => {
+  res.send('FindMyDocs Backend API is running...');
 });
+
+app.get('/favicon.ico', (req, res) => {
+  res.status(204).end();
+});
+
 
 // --- Error Handler ---
 app.use((err, req, res, next) => {

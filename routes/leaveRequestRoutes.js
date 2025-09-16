@@ -1,6 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
+import { protect, admin } from '../utils/authMiddleware.js';
 
 // Import all necessary controller functions
 import {
@@ -43,7 +44,7 @@ router.post('/', upload.single('leaveForm'), createLeaveRequest);
 
 // @desc    Get all leave requests (for approvers)
 // @route   GET /api/leaverequests
-router.get('/', getLeaveRequests);
+router.get('/', protect, admin, getLeaveRequests);
 
 // @desc    Get all leave requests for a single user
 // @route   GET /api/leaverequests/byUser/:userId

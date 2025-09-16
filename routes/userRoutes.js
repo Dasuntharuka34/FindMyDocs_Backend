@@ -1,6 +1,7 @@
 import express from 'express';
 import multer from 'multer'; // Import multer
 import path from 'path'; // Node.js path module
+import { protect, admin } from '../utils/authMiddleware.js';
 
 const router = express.Router();
 
@@ -42,28 +43,28 @@ router.post('/register', registerUser);
 router.post('/login', authUser);
 
 // --- Admin User Management Routes ---
-router.get('/', getUsers);
-router.post('/', createUser); // Manual user creation by admin
+router.get('/', protect, admin, getUsers);
+router.post('/', protect, admin, createUser); // Manual user creation by admin
 
 // --- User Profile Update Route with Multer ---
 // This route now expects a 'profilePicture' file field
 // The path in userController.js should match the URL served by server.js
-router.put('/:id', upload.single('profilePicture'), updateUser); // Apply multer here
+router.put('/:id', protect, upload.single('profilePicture'), updateUser); // Apply multer here
 
-router.delete('/:id', deleteUser);
+router.delete('/:id', protect, admin, deleteUser);
 
 // Route to reset a user's password to a default value
-router.put('/:id/reset-password', resetUserPassword); // <-- New route for password reset
+router.put('/:id/reset-password', protect, admin, resetUserPassword); // <-- New route for password reset
 
 // Route to allow a user to change their own password
-router.put('/:id/change-password', changePassword); // <-- New route for user password change
+router.put('/:id/change-password', protect, changePassword); // <-- New route for user password change
 
 // --- Admin Registration Approval Routes ---
-router.get('/registrations/pending', getPendingRegistrations);
-router.post('/registrations/:id/approve', approveRegistration);
-router.delete('/registrations/:id/reject', rejectRegistration);
+router.get('/registrations/pending', protect, admin, getPendingRegistrations);
+router.post('/registrations/:id/approve', protect, admin, approveRegistration);
+router.delete('/registrations/:id/reject', protect, admin, rejectRegistration);
 
 // --- Admin Pending Requests Route ---
-router.get('/pendingRequests', getAllPendingRequests);
+router.get('/pendingRequests', protect, admin, getAllPendingRequests);
 
 export default router;

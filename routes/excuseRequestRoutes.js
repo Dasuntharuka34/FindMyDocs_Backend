@@ -1,6 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
+import { protect, admin } from '../utils/authMiddleware.js';
 
 import {
   approveExcuseRequest,
@@ -41,7 +42,7 @@ router.post('/', upload.single('medicalCertificate'), createExcuseRequest);
 
 // @desc    Get all excuse requests (for approvers)
 // @route   GET /api/excuserequests
-router.get('/', getExcuseRequests);
+router.get('/', protect, admin, getExcuseRequests);
 
 // @desc    Get all excuse requests for a single user
 // @route   GET /api/excuserequests/byUser/:userId

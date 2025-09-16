@@ -1,5 +1,4 @@
 import express from 'express';
-import fs from 'fs';
 import multer from 'multer';
 import path from 'path';
 
@@ -17,12 +16,6 @@ import {
 } from '../controllers/leaveRequestController.js';
 
 const router = express.Router();
-
-// Ensure the 'uploads' directory exists
-const uploadsDir = 'uploads/';
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir);
-}
 
 // Configure storage for multer to handle file uploads in memory
 const storage = multer.memoryStorage();

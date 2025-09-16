@@ -1,5 +1,4 @@
 import express from 'express';
-import fs from 'fs';
 import multer from 'multer';
 import path from 'path';
 
@@ -15,12 +14,6 @@ import {
 } from '../controllers/excuseRequestController.js';
 
 const router = express.Router();
-
-// Ensure the 'uploads' directory exists
-const uploadsDir = 'uploads/';
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir);
-}
 
 // Configure multer for handling file uploads using memory storage
 const storage = multer.memoryStorage();

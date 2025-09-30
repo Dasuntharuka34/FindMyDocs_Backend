@@ -4,10 +4,11 @@ import {
     deleteRegistration,
     getPendingRegistrations,
 } from '../controllers/registrationController.js';
+import { protect, admin } from '../middleware/authMiddleware.js';
 const router = express.Router();
 
-router.route('/pending').get(getPendingRegistrations);
+router.route('/pending').get(protect, admin, getPendingRegistrations);
 router.route('/').post(createRegistration);
-router.route('/:id').delete(deleteRegistration);
+router.route('/:id').delete(protect, admin, deleteRegistration);
 
 export default router;

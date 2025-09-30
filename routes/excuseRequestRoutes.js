@@ -2,6 +2,7 @@ import express from 'express';
 import fs from 'fs';
 import multer from 'multer';
 import path from 'path';
+import { protect, admin } from '../middleware/authMiddleware.js';
 
 import {
   approveExcuseRequest,
@@ -44,34 +45,30 @@ const upload = multer({
 
 // @desc    Submit a new excuse request form with an optional file upload
 // @route   POST /api/excuserequests
-router.post('/', upload.single('medicalCertificate'), createExcuseRequest);
-
-// @desc    Get all excuse requests (for approvers)
-// @route   GET /api/excuserequests
-router.get('/', getExcuseRequests);
+router.route('/')
+    .post(protect, upload.single('medicalCertificate'), createExcuseRequest)
+    .get(protect, admin, getExcuseRequests); // Admin only
 
 // @desc    Get all excuse requests for a single user
 // @route   GET /api/excuserequests/byUser/:userId
-router.get('/byUser/:userId', getExcuseRequestsByUserId);
+router.get('/byUser/:userId', protect, getExcuseRequestsByUserId);
 
 // @desc    Approve a excuse request
 // @route   PUT /api/excuserequests/:id/approve
-router.put('/:id/approve', approveExcuseRequest);
+router.put('/:id/approve', protect, approveExcuseRequest);
 
 // @desc    Reject a excuse request
 // @route   PUT /api/excuserequests/:id/reject
-router.put('/:id/reject', rejectExcuseRequest);
-
-// @desc    Delete a excuse request
-// @route   DELETE /api/excuserequests/:id
-router.delete('/:id', deleteExcuseRequest);
+router.put('/:id/reject', protect, rejectExcuseRequest);
 
 // @desc    Get a single excuse request by ID
 // @route   GET /api/excuserequests/:id
-router.get('/:id', getExcuseRequestById);
+router.route('/:id')
+    .get(protect, getExcuseRequestById)
+    .delete(protect, admin, deleteExcuseRequest); // Admin only
 
 
-router.get('/pendingApprovals/:statusName', getPendingExcuseApprovals);
+router.get('/pendingApprovals/:statusName', protect, getPendingExcuseApprovals);
 
 
 export default router;

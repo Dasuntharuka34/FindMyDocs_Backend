@@ -1,6 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
+import { protect } from '../middleware/authMiddleware.js';
 import {
   createLetter,
   getLetterById,
@@ -32,18 +33,18 @@ const upload = multer({
 
 
 // Route to create a new letter
-router.post('/', upload.single('attachments'), createLetter);
+router.post('/', protect, upload.single('attachments'), createLetter);
 
 // Route to get letters by a specific user ID
-router.get('/byUser/:userId', getLettersByUserId);
+router.get('/byUser/:userId', protect, getLettersByUserId);
 
 // Route to get pending approvals for a specific status name
-router.get('/pendingApprovals/:statusName', getPendingApprovals);
+router.get('/pendingApprovals/:statusName', protect, getPendingApprovals);
 
 // Route to update letter status (Approve/Reject)
-router.put('/:id/status', updateLetterStatus);
+router.put('/:id/status', protect, updateLetterStatus);
 
 // IMPORTANT: Route to get a single letter by its ID.
-router.get('/:id', getLetterById);
+router.get('/:id', protect, getLetterById);
 
 export default router;

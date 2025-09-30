@@ -321,6 +321,11 @@ const updateUser = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
+    // Authorization check: only admin or the user themselves can update
+    if (req.user.role.toLowerCase() !== 'admin' && req.user._id.toString() !== id) {
+      return res.status(403).json({ message: 'Forbidden: You are not authorized to update this profile.' });
+    }
+
     // Check for email/nic/mobile duplicates
     if (email && email !== user.email) {
       const emailExists = await User.findOne({ email });
@@ -451,6 +456,8 @@ const changePassword = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: 'User not found.' });
     }
+
+    // Compare current plain password with hashed password
 
     // Compare current plain password with hashed password
     const isMatch = await bcrypt.compare(currentPassword, user.password);

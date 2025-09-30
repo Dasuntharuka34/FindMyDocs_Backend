@@ -28,6 +28,11 @@ const submitterRoleToInitialStageIndex = {
 const createLetter = async (req, res) => {
     const { type, reason, date, studentId, student, submitterRole } = req.body;
 
+    // Authorization check: ensure the studentId in the request body matches the authenticated user's ID
+    if (req.user._id.toString() !== studentId) {
+        return res.status(403).json({ message: 'Forbidden: You are not authorized to create a letter for another user.' });
+    }
+
     // Handle file attachment - convert buffer to base64 if file is uploaded
     let attachmentData = null;
     if (req.file) {
@@ -65,6 +70,12 @@ const createLetter = async (req, res) => {
 // @access  Private (Student only)
 const getLettersByUserId = async (req, res) => {
     const { userId } = req.params;
+
+    // Authorization check: only admin or the user themselves can view the letters
+    if (req.user.role.toLowerCase() !== 'admin' && req.user._id.toString() !== userId) {
+        return res.status(403).json({ message: 'Forbidden: You are not authorized to view these letters.' });
+    }
+
     try {
         const letters = await Letter.find({ studentId: userId });
         res.json(letters);
@@ -82,6 +93,10 @@ const getLetterById = async (req, res) => {
     try {
         const letter = await Letter.findById(id);
         if (letter) {
+            // Authorization check: only admin or the user who created the letter can view it
+            if (req.user.role.toLowerCase() !== 'admin' && req.user._id.toString() !== letter.studentId.toString()) {
+                return res.status(403).json({ message: 'Forbidden: You are not authorized to view this letter.' });
+            }
             res.json(letter);
         } else {
             res.status(404).json({ message: 'Letter not found' });
@@ -126,6 +141,12 @@ const updateLetterStatus = async (req, res) => {
 
         if (!letter) {
             return res.status(404).json({ message: 'Letter not found' });
+        }
+
+        // Authorization check: only users with the correct role can update the status
+        const nextExpectedApprover = approvalStages[letter.currentStageIndex].approverRole;
+        if (req.user.role !== nextExpectedApprover) {
+            return res.status(403).json({ message: 'Not authorized to update the status of this letter at this stage.' });
         }
 
         letter.status = status;

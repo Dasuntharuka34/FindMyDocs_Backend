@@ -1,4 +1,5 @@
 import express from 'express';
+import { protect } from '../middleware/authMiddleware.js';
 import {
     createNotification,
     deleteAllNotificationsByUser,
@@ -9,14 +10,14 @@ import {
 const router = express.Router();
 
 router.route('/byUser/:userId')
-  .get(getNotificationsByUser)
-  .delete(deleteAllNotificationsByUser); // Add DELETE endpoint for all user notifications
+  .get(protect, getNotificationsByUser)
+  .delete(protect, deleteAllNotificationsByUser); // Add DELETE endpoint for all user notifications
 
-router.route('/').post(createNotification);
+router.route('/').post(protect, createNotification);
 
 router.route('/:id')
-  .delete(deleteNotification); // Add DELETE endpoint for single notification
+  .delete(protect, deleteNotification); // Add DELETE endpoint for single notification
 
-router.route('/:id/read').put(markNotificationAsRead);
+router.route('/:id/read').put(protect, markNotificationAsRead);
 
 export default router;

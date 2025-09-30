@@ -1,0 +1,53 @@
+import mongoose from 'mongoose';
+
+const formSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: true,
+    unique: true,
+  },
+  description: {
+    type: String,
+  },
+  fields: [
+    {
+      name: {
+        type: String,
+        required: true,
+      },
+      label: {
+        type: String,
+        required: true,
+      },
+      type: {
+        type: String,
+        required: true,
+        enum: ['text', 'textarea', 'select', 'file', 'date'],
+      },
+      options: [
+        {
+          type: String,
+        },
+      ],
+      validation: {
+        required: {
+          type: Boolean,
+          default: false,
+        },
+      },
+    },
+  ],
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
+
+const Form = mongoose.model('Form', formSchema);
+
+export default Form;

@@ -176,6 +176,11 @@ const getExcuseRequestsByUserId = async (req, res) => {
   const { userId } = req.params;
   if (!userId) return res.status(400).json({ message: 'User ID is required' });
 
+  // Authorization check: only admin or the user themselves can view the requests
+  if (req.user.role.toLowerCase() !== 'admin' && req.user._id.toString() !== userId) {
+    return res.status(403).json({ message: 'Forbidden: You are not authorized to view these requests.' });
+  }
+
   try {
     const requests = await ExcuseRequest.find({ studentId: userId })
       .sort({ submittedDate: -1 }); // Sort by most recent first
@@ -209,13 +214,13 @@ const getPendingExcuseApprovals = async (req, res) => {
 const approveExcuseRequest = async (req, res) => {
   try {
     const { id } = req.params;
-    const { approverRole, approverId, comment } = req.body;
+    const { approverId, comment } = req.body;
 
     const request = await ExcuseRequest.findById(id);
     if (!request) return res.status(404).json({ message: 'Excuse request not found.' });
 
     const nextExpectedApprover = approvalStages[request.currentStageIndex].approverRole;
-    if (approverRole !== nextExpectedApprover) {
+    if (req.user.role !== nextExpectedApprover) {
       return res.status(403).json({ message: 'Not authorized to approve at this stage.' });
     }
 
@@ -286,7 +291,7 @@ const rejectExcuseRequest = async (req, res) => {
     if (!request) return res.status(404).json({ message: 'Excuse request not found.' });
 
     const nextExpectedApprover = approvalStages[request.currentStageIndex].approverRole;
-    if (approverRole !== nextExpectedApprover) {
+    if (req.user.role !== nextExpectedApprover) {
       return res.status(403).json({ message: 'Not authorized to reject at this stage.' });
     }
 

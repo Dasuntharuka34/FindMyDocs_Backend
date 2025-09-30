@@ -160,11 +160,16 @@ const getLeaveRequestById = async (req, res) => {
 // @route   GET /api/leaverequests/byUser/:userId
 // @access  Private
 const getLeaveRequestsByUserId = async (req, res) => {
-  // Now we get the user ID from the URL parameters instead of the query string
   const userId = req.params.userId;
   if (!userId) {
     return res.status(400).json({ message: 'User ID is required' });
   }
+
+  // Authorization check: only admin or the user themselves can view the requests
+  if (req.user.role.toLowerCase() !== 'admin' && req.user._id.toString() !== userId) {
+    return res.status(403).json({ message: 'Forbidden: You are not authorized to view these requests.' });
+  }
+
   try {
     const requests = await LeaveRequest.find({ studentId: userId });
     res.json(requests);
@@ -180,7 +185,7 @@ const getLeaveRequestsByUserId = async (req, res) => {
 const approveLeaveRequest = async (req, res) => {
   try {
     const { id } = req.params;
-    const { approverRole, approverId, comment } = req.body;
+    const { approverId, comment } = req.body;
 
     const request = await LeaveRequest.findById(id);
 
@@ -189,7 +194,7 @@ const approveLeaveRequest = async (req, res) => {
     }
 
     const nextExpectedApprover = approvalStages[request.currentStageIndex].approverRole;
-    if (approverRole !== nextExpectedApprover) {
+    if (req.user.role !== nextExpectedApprover) {
       return res.status(403).json({ message: 'You are not authorized to approve this request at this stage.' });
     }
 
@@ -256,7 +261,7 @@ const approveLeaveRequest = async (req, res) => {
 const rejectLeaveRequest = async (req, res) => {
   try {
     const { id } = req.params;
-    const { approverRole, approverId, comment } = req.body;
+    const { approverId, comment } = req.body;
 
     const request = await LeaveRequest.findById(id);
 
@@ -265,7 +270,7 @@ const rejectLeaveRequest = async (req, res) => {
     }
 
     const nextExpectedApprover = approvalStages[request.currentStageIndex].approverRole;
-    if (approverRole !== nextExpectedApprover) {
+    if (req.user.role !== nextExpectedApprover) {
       return res.status(403).json({ message: 'You are not authorized to reject this request at this stage.' });
     }
 
@@ -310,6 +315,10 @@ const deleteLeaveRequest = async (req, res) => {
     const request = await LeaveRequest.findById(id);
 
     if (request) {
+      // Authorization check: only admin or the user who created the request can delete it
+      if (req.user.role.toLowerCase() !== 'admin' && req.user._id.toString() !== request.studentId.toString()) {
+        return res.status(403).json({ message: 'Forbidden: You are not authorized to delete this request.' });
+      }
       await request.deleteOne();
       res.json({ message: 'Leave request removed' });
     } else {

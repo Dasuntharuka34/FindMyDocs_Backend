@@ -11,10 +11,21 @@ import notificationRoutes from './routes/notificationRoutes.js';
 import registrationRoutes from './routes/registrationRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 
+import formRoutes from './routes/formRoutes.js';
+
 const app = express();
 
-// Connect to database
-connectDB();
+const ensureDbConnection = async (req, res, next) => {
+    try {
+        await connectDB();
+        next();
+    } catch (error) {
+        console.error("Database connection error in middleware:", error);
+        res.status(500).json({ message: "Failed to connect to the database." });
+    }
+};
+
+app.use(ensureDbConnection);
 
 // --- Middleware ---
 app.use(
@@ -32,6 +43,7 @@ app.use('/api/letters', letterRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/excuserequests', excuseRequestRoutes);
 app.use('/api/leaverequests', leaveRequestRoutes);
+app.use('/api/forms', formRoutes);
 
 // --- Root Route ---
 app.get('/', (req, res) => {

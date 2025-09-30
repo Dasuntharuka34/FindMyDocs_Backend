@@ -304,7 +304,8 @@ const updateUser = async (req, res) => {
       const filename = `profile-${id}-${timestamp}.${req.file.originalname.split('.').pop()}`;
 
       // Upload to Vercel Blob Storage
-      const url = await uploadToBlob(req.file.buffer, filename, {
+      const filenameWithFolder = `profile/${filename}`;
+      const url = await uploadToBlob(req.file.buffer, filenameWithFolder, {
         contentType: req.file.mimetype,
       });
 

@@ -1,8 +1,7 @@
 import express from 'express';
-import fs from 'fs';
 import multer from 'multer';
 import path from 'path';
-import { protect, admin } from '../middleware/authMiddleware.js';
+import { protect, admin } from '../utils/authMiddleware.js';
 
 import {
   approveExcuseRequest,
@@ -16,12 +15,6 @@ import {
 } from '../controllers/excuseRequestController.js';
 
 const router = express.Router();
-
-// Ensure the 'uploads' directory exists
-const uploadsDir = 'uploads/';
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir);
-}
 
 // Configure multer for handling file uploads using memory storage
 const storage = multer.memoryStorage();
@@ -45,9 +38,11 @@ const upload = multer({
 
 // @desc    Submit a new excuse request form with an optional file upload
 // @route   POST /api/excuserequests
-router.route('/')
-    .post(protect, upload.single('medicalCertificate'), createExcuseRequest)
-    .get(protect, admin, getExcuseRequests); // Admin only
+router.post('/', upload.single('medicalCertificate'), createExcuseRequest);
+
+// @desc    Get all excuse requests (for approvers)
+// @route   GET /api/excuserequests
+router.get('/', getExcuseRequests);
 
 // @desc    Get all excuse requests for a single user
 // @route   GET /api/excuserequests/byUser/:userId

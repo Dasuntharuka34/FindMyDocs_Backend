@@ -1,5 +1,4 @@
 import express from 'express';
-import fs from 'fs';
 import multer from 'multer';
 import path from 'path';
 import { protect, admin } from '../middleware/authMiddleware.js';
@@ -17,12 +16,6 @@ import {
 } from '../controllers/leaveRequestController.js';
 
 const router = express.Router();
-
-// Ensure the 'uploads' directory exists
-const uploadsDir = 'uploads/';
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir);
-}
 
 // Configure storage for multer to handle file uploads in memory
 const storage = multer.memoryStorage();
@@ -49,9 +42,9 @@ router.route('/')
     .post(protect, upload.single('leaveForm'), createLeaveRequest)
     .get(protect, admin, getLeaveRequests); // Admin only
 
-// @desc    Get all leave requests for a single user
-// @route   GET /api/leaverequests/byUser/:userId
-router.get('/byUser/:userId', protect, getLeaveRequestsByUserId);
+// @desc    Get all leave requests (for approvers)
+// @route   GET /api/leaverequests
+router.get('/', protect, admin, getLeaveRequests);
 
 // @desc    Get all pending leave requests for a specific status
 // @route   GET /api/leaverequests/pendingApprovals/:status

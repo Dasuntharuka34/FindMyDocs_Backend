@@ -1,25 +1,10 @@
 import express from 'express';
-import fs from 'fs'; // Node.js file system module
 import multer from 'multer'; // Import multer
 import path from 'path'; // Node.js path module
 import { fileURLToPath } from 'url'; // For ES Modules to get __dirname
 import { protect, admin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
-
-// Get __dirname equivalent for ES Modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Define the absolute path to the uploads directory for profile pictures
-// This will resolve to your_backend_root/uploads/profile_pictures
-const profileUploadsDir = path.join(__dirname, '..', 'uploads', 'profile_pictures');
-
-// Ensure the directory exists
-if (!fs.existsSync(profileUploadsDir)) {
-  fs.mkdirSync(profileUploadsDir, { recursive: true });
-  console.log(`Created uploads directory at: ${profileUploadsDir}`);
-}
 
 const storage = multer.memoryStorage();
 

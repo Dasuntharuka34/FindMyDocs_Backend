@@ -1,5 +1,7 @@
 import bcrypt from 'bcryptjs';
 import Registration from '../models/Registration.js';
+import sendEmail from '../utils/email.js';
+import crypto from 'crypto';
 
 // @desc    Get all pending registrations
 // @route   GET /api/registrations/pending
@@ -31,7 +33,7 @@ const createRegistration = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    const registration = await Registration.create({
+    const registration = new Registration({
       name,
       email,
       nic,
@@ -42,35 +44,69 @@ const createRegistration = async (req, res) => {
       department,
     });
 
-    if (registration) {
-      res.status(201).json({
-        _id: registration._id,
-        name: registration.name,
+    const verificationToken = registration.getEmailVerificationToken();
+    await registration.save();
+
+    // Send verification email
+    const verificationUrl = `${req.protocol}://${req.get('host')}/api/registrations/verify/${verificationToken}`;
+    const message = `Please verify your email by clicking on the following link: \n\n ${verificationUrl}`;
+
+    try {
+      await sendEmail({
         email: registration.email,
-        nic: registration.nic,
-        mobile: registration.mobile,
-        role: registration.role,
-        department:registration.department,
-        message: 'Registration submitted successfully. Awaiting admin approval.',
+        subject: 'Email Verification',
+        message,
       });
-    } else {
-      res.status(400).json({ message: 'Invalid registration data' });
+
+      res.status(201).json({
+        message: 'Registration submitted successfully. Please check your email to verify your account.',
+      });
+    } catch (error) {
+      console.error(error);
+      registration.emailVerificationToken = undefined;
+      registration.emailVerificationExpires = undefined;
+      await registration.save({ validateBeforeSave: false });
+      return res.status(500).json({ message: 'Email could not be sent' });
     }
 
-    // ... rest of the function
   } catch (error) {
     res.status(500).json({ message: 'Error creating registration', error: error.message });
   }
 };
 
-// @desc    Delete a registration (after approval or rejection)
+// @desc    Verify email
+// @route   GET /api/registrations/verify/:token
+// @access  Public
+const verifyEmail = async (req, res) => {
+  const emailVerificationToken = crypto
+    .createHash('sha256')
+    .update(req.params.token)
+    .digest('hex');
+
+  const registration = await Registration.findOne({
+    emailVerificationToken,
+    emailVerificationExpires: { $gt: Date.now() },
+  });
+
+  if (!registration) {
+    return res.status(400).send('Invalid or expired token');
+  }
+
+  registration.isEmailVerified = true;
+  registration.status = 'pending';
+  registration.emailVerificationToken = undefined;
+  registration.emailVerificationExpires = undefined;
+  await registration.save();
+
+  res.redirect('/email-verified'); // Redirect to a frontend page
+};
+
+// @desc    Delete a registration
 // @route   DELETE /api/registrations/:id
 // @access  Private/Admin
 const deleteRegistration = async (req, res) => {
-  const { id } = req.params;
-
   try {
-    const registration = await Registration.findById(id);
+    const registration = await Registration.findById(req.params.id);
 
     if (registration) {
       await registration.deleteOne();
@@ -83,5 +119,5 @@ const deleteRegistration = async (req, res) => {
   }
 };
 
-export { createRegistration, deleteRegistration, getPendingRegistrations };
+export { createRegistration, deleteRegistration, getPendingRegistrations, verifyEmail };
 

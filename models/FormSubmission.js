@@ -21,6 +21,21 @@ const formSubmissionSchema = new mongoose.Schema({
     of: mongoose.Schema.Types.Mixed,
     required: true,
   },
+  status: {
+    type: String,
+    enum: ['Pending', 'Approved', 'Rejected'],
+    default: 'Pending',
+  },
+  approver: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
+  approvedAt: {
+    type: Date,
+  },
+  rejectionReason: {
+    type: String,
+  },
 });
 
 const FormSubmission = mongoose.model('FormSubmission', formSubmissionSchema);

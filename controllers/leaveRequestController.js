@@ -207,16 +207,27 @@ const approveLeaveRequest = async (req, res) => {
     const nextStageIndex = request.currentStageIndex + 1;
     const nextStage = approvalStages[nextStageIndex];
 
+    // Update the pending approval
+    const approverRole = approvalStages[request.currentStageIndex].approverRole;
+    const currentApproval = request.approvals.find(a => a.status === 'pending' && a.approverRole === approverRole);
+    if (currentApproval) {
+        currentApproval.status = 'approved';
+        currentApproval.approvedAt = new Date();
+        currentApproval.approverId = approverId;
+        currentApproval.approverName = approverUser.name;
+        currentApproval.comment = comment || '';
+    }
+
     request.currentStageIndex = nextStageIndex;
     request.status = nextStage.name;
-    request.approvals.push({
-      approverRole: approverRole,
-      approverId: approverId,
-      approverName: approverUser.name, // Add approver's name
-      status: 'approved',
-      approvedAt: new Date(),
-      comment: comment || ''
-    });
+
+    // Add new pending approval for the next stage
+    if (nextStage.approverRole) {
+        request.approvals.push({
+            approverRole: nextStage.approverRole,
+            status: 'pending'
+        });
+    }
 
     await request.save();
 

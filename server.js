@@ -12,6 +12,8 @@ import registrationRoutes from './routes/registrationRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 
 import formRoutes from './routes/formRoutes.js';
+import formSubmissionRoutes from './routes/formSubmissionRoutes.js';
+import seedRoutes from './routes/seedRoutes.js';
 
 const app = express();
 
@@ -44,6 +46,8 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/excuserequests', excuseRequestRoutes);
 app.use('/api/leaverequests', leaveRequestRoutes);
 app.use('/api/forms', formRoutes);
+app.use('/api/seed', seedRoutes);
+app.use('/api/form-submissions', formSubmissionRoutes);
 
 // --- Root Route ---
 app.get('/', (req, res) => {

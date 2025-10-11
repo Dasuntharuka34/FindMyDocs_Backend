@@ -293,7 +293,7 @@ const rejectRegistration = async (req, res) => {
 const updateUser = async (req, res) => {
   const { id } = req.params;
 
-  const { name, email, nic, mobile, department, indexNumber } = req.body;
+  const { name, mobile, department } = req.body;
 
   // Handle profile picture - upload to Vercel Blob Storage if file is uploaded
   let profilePictureData = null;
@@ -327,19 +327,7 @@ const updateUser = async (req, res) => {
       return res.status(403).json({ message: 'Forbidden: You are not authorized to update this profile.' });
     }
 
-    // Check for email/nic/mobile duplicates
-    if (email && email !== user.email) {
-      const emailExists = await User.findOne({ email });
-      if (emailExists && emailExists._id.toString() !== user._id.toString()) {
-        return res.status(400).json({ message: 'Email already in use by another account.' });
-      }
-    }
-    if (nic && nic !== user.nic) {
-      const nicExists = await User.findOne({ nic });
-      if (nicExists && nicExists._id.toString() !== user._id.toString()) {
-        return res.status(400).json({ message: 'NIC already in use by another account.' });
-      }
-    }
+    // Check for mobile duplicates
     if (mobile && mobile !== user.mobile) {
       const mobileExists = await User.findOne({ mobile });
       if (mobileExists && mobileExists._id.toString() !== user._id.toString()) {
@@ -348,16 +336,8 @@ const updateUser = async (req, res) => {
     }
 
     user.name = name || user.name;
-    user.email = email || user.email;
-    user.nic = nic || user.nic;
     user.mobile = mobile || user.mobile;
     user.department = department || user.department;
-
-    if (user.role === 'Student') {
-      user.indexNumber = indexNumber || user.indexNumber;
-    } else {
-      user.indexNumber = undefined;
-    }
 
     if (profilePictureData) {
       user.profilePicture = profilePictureData;

@@ -1,5 +1,33 @@
 import mongoose from 'mongoose';
 
+// Define the approval stage schema
+const approvalStageSchema = mongoose.Schema({
+  approverRole: {
+    type: String,
+    enum: ['Lecturer', 'HOD', 'Dean', 'VC'],
+    required: true
+  },
+  approverId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  approverName: {
+    type: String // Add this field
+  },
+  status: {
+    type: String,
+    enum: ['pending', 'approved', 'rejected'],
+    default: 'pending'
+  },
+  comment: {
+    type: String,
+    default: ''
+  },
+  approvedAt: {
+    type: Date
+  }
+});
+
 const letterSchema = mongoose.Schema(
     {
         type: { type: String, required: true },
@@ -37,12 +65,9 @@ const letterSchema = mongoose.Schema(
         },
         // --- END OPTIONAL FIELDS ---
 
-        // --- EXISTING FIELDS FOR APPROVAL FLOW ---
-        approver: { type: String }, // Name of the last approver
-        approverRole: { type: String }, // Role of the last approver (e.g., 'Lecturer', 'HOD')
-        rejectionReason: { type: String }, // Reason if rejected
+        // --- NEW APPROVALS ARRAY ---
+        approvals: [approvalStageSchema],
         lastUpdated: { type: Date }, // To track when the status was last updated
-        // --- END EXISTING FIELDS ---
     },
     {
         timestamps: true, // Automatically add createdAt and updatedAt timestamps

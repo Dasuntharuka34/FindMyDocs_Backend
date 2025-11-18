@@ -80,5 +80,5 @@ const deleteRegistration = async (req, res) => {
   }
 };
 
-export { createRegistration, deleteRegistration, getPendingRegistrations };
+export { createRegistration, deleteRegistration, getPendingRegistrations, verifyEmail };
 

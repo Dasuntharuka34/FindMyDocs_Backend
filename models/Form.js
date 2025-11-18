@@ -46,6 +46,10 @@ const formSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  isEnabled: {
+    type: Boolean,
+    default: true,
+  },
 });
 
 const Form = mongoose.model('Form', formSchema);

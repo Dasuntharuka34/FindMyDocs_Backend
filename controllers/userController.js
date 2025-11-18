@@ -1,11 +1,12 @@
+import { sendEmail } from '../utils/mailService.js';
+import User from '../models/User.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import Registration from '../models/Registration.js';
 import { uploadToBlob } from '../config/vercelBlob.js';
 import ExcuseRequest from '../models/ExcuseRequest.js';
 import LeaveRequest from '../models/LeaveRequest.js';
 import Letter from '../models/Letter.js';
-import Registration from '../models/Registration.js';
-import User from '../models/User.js';
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -69,6 +70,19 @@ const registerUser = async (req, res) => {
     });
 
     if (registration) {
+      // Send a confirmation email
+      const emailOptions = {
+        to: email,
+        subject: 'Registration Submitted Successfully',
+        html: `
+          <h1>Welcome, ${name}!</h1>
+          <p>Your registration request has been submitted successfully.</p>
+          <p>Your account is now pending admin approval. You will be notified via email once your account is approved.</p>
+          <p>Thank you for joining FindMyDocs!</p>
+        `,
+      };
+      await sendEmail(emailOptions);
+
       res.status(201).json({
         message: 'Registration request submitted successfully! Your account is pending admin approval.',
         status: 'pending',
@@ -87,19 +101,19 @@ const registerUser = async (req, res) => {
 // @route   POST /api/users/login
 // @access  Public
 const authUser = async (req, res) => {
-  const { email, password } = req.body;
+  const { nic, password } = req.body;
 
   try {
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ nic });
 
     if (!user) {
-      return res.status(401).json({ message: 'Invalid email or password' });
+      return res.status(401).json({ message: 'Invalid NIC or password' });
     }
 
     // Compare plain password with hashed password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(401).json({ message: 'Invalid email or password' });
+      return res.status(401).json({ message: 'Invalid NIC or password' });
     }
 
     const token = generateToken(user._id);
@@ -253,6 +267,19 @@ const approveRegistration = async (req, res) => {
 
     await Registration.findByIdAndDelete(id);
 
+    // Send approval email
+    const approvalEmailOptions = {
+      to: newUser.email,
+      subject: 'Your Registration Has Been Approved!',
+      html: `
+        <h1>Congratulations, ${newUser.name}!</h1>
+        <p>Your registration request for FindMyDocs has been approved by the administrator.</p>
+        <p>You can now log in to your account using your credentials.</p>
+        <p>Thank you for joining FindMyDocs!</p>
+      `,
+    };
+    await sendEmail(approvalEmailOptions);
+
     res.status(200).json({ message: `User ${newUser.email} approved and created successfully.` });
 
   } catch (error) {
@@ -293,7 +320,7 @@ const rejectRegistration = async (req, res) => {
 const updateUser = async (req, res) => {
   const { id } = req.params;
 
-  const { name, email, nic, mobile, department, indexNumber } = req.body;
+  const { name, mobile, department } = req.body;
 
   // Handle profile picture - upload to Vercel Blob Storage if file is uploaded
   let profilePictureData = null;
@@ -327,19 +354,7 @@ const updateUser = async (req, res) => {
       return res.status(403).json({ message: 'Forbidden: You are not authorized to update this profile.' });
     }
 
-    // Check for email/nic/mobile duplicates
-    if (email && email !== user.email) {
-      const emailExists = await User.findOne({ email });
-      if (emailExists && emailExists._id.toString() !== user._id.toString()) {
-        return res.status(400).json({ message: 'Email already in use by another account.' });
-      }
-    }
-    if (nic && nic !== user.nic) {
-      const nicExists = await User.findOne({ nic });
-      if (nicExists && nicExists._id.toString() !== user._id.toString()) {
-        return res.status(400).json({ message: 'NIC already in use by another account.' });
-      }
-    }
+    // Check for mobile duplicates
     if (mobile && mobile !== user.mobile) {
       const mobileExists = await User.findOne({ mobile });
       if (mobileExists && mobileExists._id.toString() !== user._id.toString()) {
@@ -348,16 +363,8 @@ const updateUser = async (req, res) => {
     }
 
     user.name = name || user.name;
-    user.email = email || user.email;
-    user.nic = nic || user.nic;
     user.mobile = mobile || user.mobile;
     user.department = department || user.department;
-
-    if (user.role === 'Student') {
-      user.indexNumber = indexNumber || user.indexNumber;
-    } else {
-      user.indexNumber = undefined;
-    }
 
     if (profilePictureData) {
       user.profilePicture = profilePictureData;

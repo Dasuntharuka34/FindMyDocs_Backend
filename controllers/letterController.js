@@ -1,4 +1,5 @@
 import Letter from '../models/Letter.js';
+import User from '../models/User.js';
 
 // --- APPROVAL STAGE DEFINITIONS (MUST BE CONSISTENT WITH FRONTEND) ---
 const approvalStages = [
@@ -45,9 +46,10 @@ const createLetter = async (req, res) => {
                                ? submitterRoleToInitialStageIndex[submitterRole]
                                : 0;
     const initialStatus = approvalStages[initialStageIndex].name;
+    const firstApproverRole = approvalStages[initialStageIndex].approverRole;
 
     try {
-        const letter = await Letter.create({
+        const newLetter = new Letter({
             type,
             reason,
             date,
@@ -58,7 +60,16 @@ const createLetter = async (req, res) => {
             submittedDate: new Date(),
             attachments: attachmentData // Store base64 data instead of file path
         });
-        res.status(201).json(letter);
+
+        if (firstApproverRole) {
+            newLetter.approvals.push({
+                approverRole: firstApproverRole,
+                status: 'pending'
+            });
+        }
+
+        const createdLetter = await newLetter.save();
+        res.status(201).json(createdLetter);
     } catch (error) {
         console.error("Error creating letter:", error);
         res.status(500).json({ message: 'Server error creating letter', error: error.message });
@@ -91,7 +102,7 @@ const getLettersByUserId = async (req, res) => {
 const getLetterById = async (req, res) => {
     const { id } = req.params;
     try {
-        const letter = await Letter.findById(id);
+        const letter = await Letter.findById(id).populate('approvals.approverId', 'name email role');
         if (letter) {
             // Authorization check: only admin or the user who created the letter can view it
             if (req.user.role.toLowerCase() !== 'admin' && req.user._id.toString() !== letter.studentId.toString()) {
@@ -134,7 +145,7 @@ const getPendingApprovals = async (req, res) => {
 // @access  Private (Staff, Lecturer, HOD, Dean, VC)
 const updateLetterStatus = async (req, res) => {
     const { id } = req.params;
-    const { status, currentStageIndex, rejectionReason, approver, approverRole } = req.body;
+    const { status, comment, approverId } = req.body;
 
     try {
         const letter = await Letter.findById(id);
@@ -143,25 +154,52 @@ const updateLetterStatus = async (req, res) => {
             return res.status(404).json({ message: 'Letter not found' });
         }
 
-        // Authorization check: only users with the correct role can update the status
-        const nextExpectedApprover = approvalStages[letter.currentStageIndex].approverRole;
-        if (req.user.role !== nextExpectedApprover) {
+        const approverUser = await User.findById(approverId);
+        if (!approverUser) {
+            return res.status(404).json({ message: 'Approver user not found.' });
+        }
+
+        const currentStage = approvalStages[letter.currentStageIndex];
+        if (req.user.role !== currentStage.approverRole) {
             return res.status(403).json({ message: 'Not authorized to update the status of this letter at this stage.' });
         }
 
-        letter.status = status;
-        letter.currentStageIndex = currentStageIndex;
-        letter.lastUpdated = new Date();
+        const currentApproval = letter.approvals.find(a => a.status === 'pending' && a.approverRole === currentStage.approverRole);
 
-        if (rejectionReason) {
-            letter.rejectionReason = rejectionReason;
+        if (status === 'approved') {
+            if (currentApproval) {
+                currentApproval.status = 'approved';
+                currentApproval.approvedAt = new Date();
+                currentApproval.approverId = approverId;
+                currentApproval.approverName = approverUser.name;
+                currentApproval.comment = comment || '';
+            }
+
+            const nextStageIndex = letter.currentStageIndex + 1;
+            const nextStage = approvalStages[nextStageIndex];
+            letter.currentStageIndex = nextStageIndex;
+            letter.status = nextStage.name;
+
+            if (nextStage.approverRole) {
+                letter.approvals.push({
+                    approverRole: nextStage.approverRole,
+                    status: 'pending'
+                });
+            }
+        } else if (status === 'rejected') {
+            if (currentApproval) {
+                currentApproval.status = 'rejected';
+                currentApproval.approvedAt = new Date();
+                currentApproval.approverId = approverId;
+                currentApproval.approverName = approverUser.name;
+                currentApproval.comment = comment || 'Request rejected';
+            }
+            letter.status = 'Rejected';
         } else {
-            letter.rejectionReason = undefined;
+            return res.status(400).json({ message: 'Invalid status' });
         }
 
-        letter.approver = approver;
-        letter.approverRole = approverRole;
-
+        letter.lastUpdated = new Date();
         const updatedLetter = await letter.save();
         res.json(updatedLetter);
 

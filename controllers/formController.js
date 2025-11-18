@@ -86,4 +86,35 @@ const deleteForm = async (req, res) => {
   }
 };
 
-export { getForms, getFormById, createForm, updateForm, deleteForm };
+// @desc    Update form status
+// @route   PUT /api/forms/:id/status
+// @access  Private/Admin
+const updateFormStatus = async (req, res) => {
+  try {
+    const form = await Form.findById(req.params.id);
+
+    if (form) {
+      form.isEnabled = req.body.isEnabled;
+      const updatedForm = await form.save();
+      res.json(updatedForm);
+    } else {
+      res.status(404).json({ message: 'Form not found' });
+    }
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+// @desc    Get all enabled forms
+// @route   GET /api/forms/available
+// @access  Public
+const getAvailableForms = async (req, res) => {
+  try {
+    const forms = await Form.find({ isEnabled: true });
+    res.json(forms);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export { getForms, getFormById, createForm, updateForm, deleteForm, updateFormStatus, getAvailableForms };

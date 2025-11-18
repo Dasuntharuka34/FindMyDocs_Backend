@@ -230,10 +230,8 @@ const approveExcuseRequest = async (req, res) => {
       return res.status(404).json({ message: 'Approver user not found.' });
     }
 
-    const nextStageIndex = request.currentStageIndex + 1;
-    const nextStage = approvalStages[nextStageIndex];
-
     // Update the pending approval
+    const approverRole = approvalStages[request.currentStageIndex].approverRole;
     const currentApproval = request.approvals.find(a => a.status === 'pending' && a.approverRole === approverRole);
     if (currentApproval) {
       currentApproval.status = 'approved';
@@ -243,8 +241,25 @@ const approveExcuseRequest = async (req, res) => {
       currentApproval.comment = comment || '';
     }
 
-    request.currentStageIndex = nextStageIndex;
-    request.status = nextStage.name;
+    if (approverRole === 'Dean') {
+        // Dean is approving, so set status to "Approved"
+        request.currentStageIndex = approvalStages.findIndex(stage => stage.name === 'Approved');
+        request.status = 'Approved';
+    } else {
+        // Not the Dean, so proceed to the next stage
+        const nextStageIndex = request.currentStageIndex + 1;
+        const nextStage = approvalStages[nextStageIndex];
+        request.currentStageIndex = nextStageIndex;
+        request.status = nextStage.name;
+
+        // Add new pending approval for the next stage
+        if (nextStage.approverRole) {
+            request.approvals.push({
+                approverRole: nextStage.approverRole,
+                status: 'pending'
+            });
+        }
+    }
     request.lastUpdated = new Date();
 
     await request.save();
@@ -252,11 +267,12 @@ const approveExcuseRequest = async (req, res) => {
     // Notify requester
     await Notification.create({
       userId: request.studentId,
-      message: `Your excuse request for ${request.reason} has been approved by ${approverUser.name}. Current status: ${nextStage.name}.`,
+      message: `Your excuse request for ${request.reason} has been approved by ${approverUser.name}. Current status: ${request.status}.`,
       type: 'info',
     });
 
     // Notify next approver
+    const nextStage = approvalStages[request.currentStageIndex];
     if (nextStage.approverRole) {
       const nextApprovers = await User.find({ role: nextStage.approverRole });
       for (const approver of nextApprovers) {
@@ -285,7 +301,7 @@ const approveExcuseRequest = async (req, res) => {
 const rejectExcuseRequest = async (req, res) => {
   try {
     const { id } = req.params;
-    const { approverRole, approverId, comment } = req.body;
+    const { approverId, comment } = req.body;
 
     const request = await ExcuseRequest.findById(id);
     if (!request) return res.status(404).json({ message: 'Excuse request not found.' });
@@ -302,6 +318,7 @@ const rejectExcuseRequest = async (req, res) => {
     }
 
     // Update the pending approval
+    const approverRole = approvalStages[request.currentStageIndex].approverRole;
     const currentApproval = request.approvals.find(a => a.status === 'pending' && a.approverRole === approverRole);
     if (currentApproval) {
       currentApproval.status = 'rejected';
@@ -359,4 +376,3 @@ const deleteExcuseRequest = async (req, res) => {
 export {
     approveExcuseRequest, createExcuseRequest, deleteExcuseRequest, getExcuseRequestById, getExcuseRequests, getExcuseRequestsByUserId, getPendingExcuseApprovals, rejectExcuseRequest
 };
-

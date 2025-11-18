@@ -1,4 +1,24 @@
 import Notification from '../models/Notification.js';
+import User from '../models/User.js'; // Import User model
+import { sendNotificationEmail } from '../utils/mailService.js'; // Import sendNotificationEmail
+
+// Helper function to create and send a notification
+const createAndSendNotification = async ({ userId, message, type }) => {
+  const notification = new Notification({
+    userId,
+    message,
+    type,
+  });
+
+  const createdNotification = await notification.save();
+
+  // Fetch user to get email for sending notification
+  const user = await User.findById(userId);
+  if (user && user.email) {
+    await sendNotificationEmail(user.email, message);
+  }
+  return createdNotification;
+};
 
 // @desc    Get all notifications for a specific user
 // @route   GET /api/notifications/byUser/:userId
@@ -13,17 +33,16 @@ const getNotificationsByUser = async (req, res) => {
   }
 };
 
-// @desc    Create a new notification
+// @desc    Create a new notification via API
 // @route   POST /api/notifications
 // @access  Private (Internal/Admin)
 const createNotification = async (req, res) => {
   const { userId, message, type } = req.body;
   try {
-    const notification = await Notification.create({
-      userId,
-      message,
-      type,
-    });
+    if (!userId || !message || !type) {
+      return res.status(400).json({ message: 'Missing required fields: userId, message, type' });
+    }
+    const notification = await createAndSendNotification({ userId, message, type });
     res.status(201).json(notification);
   } catch (error) {
     res.status(500).json({ message: 'Error creating notification', error: error.message });
@@ -80,4 +99,4 @@ const deleteAllNotificationsByUser = async (req, res) => {
   }
 };
 
-export { getNotificationsByUser, createNotification, markNotificationAsRead, deleteNotification, deleteAllNotificationsByUser };
+export { getNotificationsByUser, createNotification, markNotificationAsRead, deleteNotification, deleteAllNotificationsByUser, createAndSendNotification };

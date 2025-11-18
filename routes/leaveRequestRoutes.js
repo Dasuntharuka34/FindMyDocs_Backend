@@ -62,5 +62,11 @@ router.route('/:id')
     .get(protect, getLeaveRequestById)
     .delete(protect, admin, deleteLeaveRequest); // Admin only
 
+// @desc    Get all leave requests for a specific user
+// @route   GET /api/leaverequests/byUser/:userId
+router.get('/byUser/:userId', protect, getLeaveRequestsByUserId);
+
+
+
 
 export default router;

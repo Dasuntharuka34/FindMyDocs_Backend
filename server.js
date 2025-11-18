@@ -12,6 +12,8 @@ import registrationRoutes from './routes/registrationRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 
 import formRoutes from './routes/formRoutes.js';
+import formSubmissionRoutes from './routes/formSubmissionRoutes.js';
+import seedRoutes from './routes/seedRoutes.js';
 
 const app = express();
 
@@ -30,7 +32,7 @@ app.use(ensureDbConnection);
 // --- Middleware ---
 app.use(
   cors({
-    origin: '*',
+    origin: ['https://find-my-docs-frontend.vercel.app', 'http://localhost:3000'], // Explicitly set the frontend origin
     credentials: true,
   })
 );
@@ -44,6 +46,8 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/excuserequests', excuseRequestRoutes);
 app.use('/api/leaverequests', leaveRequestRoutes);
 app.use('/api/forms', formRoutes);
+app.use('/api/seed', seedRoutes);
+app.use('/api/form-submissions', formSubmissionRoutes);
 
 // --- Root Route ---
 app.get('/', (req, res) => {
@@ -61,5 +65,5 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: 'Something broke!', error: err.message });
 });
 
-// Export the Express app for Vercel
+// Export the Express app
 export default app;

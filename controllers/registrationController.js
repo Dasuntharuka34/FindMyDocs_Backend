@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import Registration from '../models/Registration.js';
+import { sendRegistrationEmail } from '../utils/mailService.js';
 
 // @desc    Get all pending registrations
 // @route   GET /api/registrations/pending
@@ -31,7 +32,7 @@ const createRegistration = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    const registration = await Registration.create({
+    const registration = new Registration({
       name,
       email,
       nic,
@@ -42,35 +43,31 @@ const createRegistration = async (req, res) => {
       department,
     });
 
-    if (registration) {
-      res.status(201).json({
-        _id: registration._id,
-        name: registration.name,
-        email: registration.email,
-        nic: registration.nic,
-        mobile: registration.mobile,
-        role: registration.role,
-        department:registration.department,
-        message: 'Registration submitted successfully. Awaiting admin approval.',
-      });
-    } else {
-      res.status(400).json({ message: 'Invalid registration data' });
+    await registration.save();
+
+    // Send registration email
+    try {
+      await sendRegistrationEmail(registration.email, registration.name);
+    } catch (emailError) {
+      console.error('Error sending registration email:', emailError);
+      // Note: We don't fail the registration if email fails, but log the error
     }
 
-    // ... rest of the function
+    res.status(201).json({
+      message: 'Registration submitted successfully. Please wait for admin approval.',
+    });
+
   } catch (error) {
     res.status(500).json({ message: 'Error creating registration', error: error.message });
   }
 };
 
-// @desc    Delete a registration (after approval or rejection)
+// @desc    Delete a registration
 // @route   DELETE /api/registrations/:id
 // @access  Private/Admin
 const deleteRegistration = async (req, res) => {
-  const { id } = req.params;
-
   try {
-    const registration = await Registration.findById(id);
+    const registration = await Registration.findById(req.params.id);
 
     if (registration) {
       await registration.deleteOne();

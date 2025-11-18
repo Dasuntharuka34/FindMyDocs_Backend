@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 
 const registrationSchema = mongoose.Schema(
   {
@@ -50,6 +51,12 @@ const registrationSchema = mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+    emailVerificationToken: String,
+    emailVerificationExpires: Date,
+    isEmailVerified: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,
@@ -57,6 +64,19 @@ const registrationSchema = mongoose.Schema(
 );
 
 // Password is now hashed on client side, so no pre-save hook needed
+
+registrationSchema.methods.getEmailVerificationToken = function () {
+  const verificationToken = crypto.randomBytes(20).toString('hex');
+
+  this.emailVerificationToken = crypto
+    .createHash('sha256')
+    .update(verificationToken)
+    .digest('hex');
+
+  this.emailVerificationExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+
+  return verificationToken;
+};
 
 const Registration = mongoose.model('Registration', registrationSchema);
 

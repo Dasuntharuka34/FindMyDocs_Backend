@@ -14,6 +14,8 @@ import userRoutes from './routes/userRoutes.js';
 import formRoutes from './routes/formRoutes.js';
 import formSubmissionRoutes from './routes/formSubmissionRoutes.js';
 import seedRoutes from './routes/seedRoutes.js';
+import reportRoutes from './routes/reportRoutes.js';
+import uploadRoutes from './routes/uploadRoutes.js'; // Import the new upload routes
 
 const app = express();
 
@@ -48,6 +50,8 @@ app.use('/api/leaverequests', leaveRequestRoutes);
 app.use('/api/forms', formRoutes);
 app.use('/api/seed', seedRoutes);
 app.use('/api/form-submissions', formSubmissionRoutes);
+app.use('/api/reports', reportRoutes);
+app.use('/api/upload', uploadRoutes); // Register the new upload routes
 
 // --- Root Route ---
 app.get('/', (req, res) => {

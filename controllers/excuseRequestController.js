@@ -4,6 +4,7 @@ import ExcuseRequest from '../models/ExcuseRequest.js';
 import Notification from '../models/Notification.js';
 import User from '../models/User.js';
 import { put, del } from '@vercel/blob';
+import { createAndSendNotification } from './notificationController.js';
 
 // --- APPROVAL STAGE DEFINITIONS ---
 const approvalStages = [
@@ -116,7 +117,7 @@ const createExcuseRequest = async (req, res) => {
     const createdRequest = await newRequest.save();
 
     // Notify requester
-    await Notification.create({
+    await createAndSendNotification({
       userId: studentId,
       message: `Your excuse request has been submitted. Status: ${initialStatus}.`,
       type: 'info',
@@ -126,7 +127,7 @@ const createExcuseRequest = async (req, res) => {
     if (firstApproverRole) {
       const approvers = await User.find({ role: firstApproverRole });
       for (const approver of approvers) {
-        await Notification.create({
+        await createAndSendNotification({
           userId: approver._id,
           message: `New excuse request from ${studentName} is awaiting your approval.`,
           type: 'info',
@@ -265,7 +266,7 @@ const approveExcuseRequest = async (req, res) => {
     await request.save();
 
     // Notify requester
-    await Notification.create({
+    await createAndSendNotification({
       userId: request.studentId,
       message: `Your excuse request for ${request.reason} has been approved by ${approverUser.name}. Current status: ${request.status}.`,
       type: 'info',
@@ -276,14 +277,14 @@ const approveExcuseRequest = async (req, res) => {
     if (nextStage.approverRole) {
       const nextApprovers = await User.find({ role: nextStage.approverRole });
       for (const approver of nextApprovers) {
-        await Notification.create({
+        await createAndSendNotification({
           userId: approver._id,
           message: `New excuse request from ${request.studentName} is awaiting your approval.`,
           type: 'info',
         });
       }
     } else {
-      await Notification.create({
+      await createAndSendNotification({
         userId: request.studentId,
         message: `Your excuse request for ${request.reason} has been fully APPROVED.`,
         type: 'success',
@@ -333,7 +334,7 @@ const rejectExcuseRequest = async (req, res) => {
 
     await request.save();
 
-    await Notification.create({
+    await createAndSendNotification({
       userId: request.studentId,
       message: `Your excuse request for ${request.reason} has been REJECTED by ${approverUser.name}.${comment ? ` Reason: ${comment}` : ''}`,
       type: 'error',

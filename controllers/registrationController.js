@@ -28,6 +28,16 @@ const createRegistration = async (req, res) => {
       return res.status(400).json({ message: 'An application with this email already exists' });
     }
 
+    const nicExists = await Registration.findOne({ nic });
+    if (nicExists) {
+      return res.status(400).json({ message: 'An application with this NIC already exists' });
+    }
+
+    const mobileExists = await Registration.findOne({ mobile });
+    if (mobileExists) {
+      return res.status(400).json({ message: 'An application with this mobile number already exists' });
+    }
+
     // Hash the password before saving
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);

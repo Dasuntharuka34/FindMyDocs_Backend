@@ -76,9 +76,27 @@ const createLetter = async (req, res) => {
     }
 };
 
+// @desc    Get all letters (for admin)
+// @route   GET /api/letters
+// @access  Private (Admin only)
+const getAllLetters = async (req, res) => {
+    // Authorization check: only admin can view all letters
+    if (req.user.role.toLowerCase() !== 'admin') {
+        return res.status(403).json({ message: 'Forbidden: You are not authorized to view all letters.' });
+    }
+
+    try {
+        const letters = await Letter.find({});
+        res.json(letters);
+    } catch (error) {
+        console.error("Error fetching all letters:", error);
+        res.status(500).json({ message: 'Server error fetching all letters', error: error.message });
+    }
+};
+
 // @desc    Get letters submitted by a specific user
 // @route   GET /api/letters/byUser/:userId
-// @access  Private (Student only)
+// @access  Private (e.g., Student, Staff, Lecturer, HOD, Dean, VC)
 const getLettersByUserId = async (req, res) => {
     const { userId } = req.params;
 
@@ -209,5 +227,5 @@ const updateLetterStatus = async (req, res) => {
     }
 };
 
-export { createLetter, getLetterById, getLettersByUserId, getPendingApprovals, updateLetterStatus };
+export { createLetter, getLetterById, getLettersByUserId, getPendingApprovals, updateLetterStatus, getAllLetters };
 

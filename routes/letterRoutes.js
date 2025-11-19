@@ -1,13 +1,14 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
-import { protect } from '../middleware/authMiddleware.js';
+import { protect, admin } from '../middleware/authMiddleware.js';
 import {
   createLetter,
   getLetterById,
   getLettersByUserId,
   getPendingApprovals,
-  updateLetterStatus
+  updateLetterStatus,
+  getAllLetters
 } from '../controllers/letterController.js';
 
 const router = express.Router();
@@ -31,6 +32,9 @@ const upload = multer({
   }
 });
 
+
+// Route to get all letters (Admin only)
+router.get('/', protect, admin, getAllLetters);
 
 // Route to create a new letter
 router.post('/', protect, upload.single('attachments'), createLetter);

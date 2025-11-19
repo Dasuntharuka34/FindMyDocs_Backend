@@ -1,6 +1,8 @@
+import { uploadToBlob } from '../config/vercelBlob.js';
 import LeaveRequest from '../models/LeaveRequest.js';
 import Notification from '../models/Notification.js';
 import User from '../models/User.js';
+import { createAndSendNotification } from './notificationController.js';
 
 // --- APPROVAL STAGE DEFINITIONS (ඉල්ලීම් අනුමත කිරීමේ අදියරයන්) ---
 const approvalStages = [
@@ -12,7 +14,6 @@ const approvalStages = [
   { name: "Approved", approverRole: null }
 ];
 
-// ඉල්ලීමක් ඉදිරිපත් කරන පුද්ගලයාගේ භූමිකාව අනුව ආරම්භක අදියර තීරණය කිරීම
 const submitterRoleToInitialStageIndex = {
   "Student": 1,
   "Lecturer": 2, // Lecturer submits, skips Staff, starts at "Pending Lecturer Approval"
@@ -42,12 +43,38 @@ const createLeaveRequest = async (req, res) => {
       return res.status(400).json({ message: 'Please provide all required fields' });
     }
 
-    // Handle file attachment - convert buffer to base64 if file is uploaded
-    let attachmentData = null;
+    // Handle file attachment with validation and upload to Vercel Blob
+    let attachmentUrl = null;
     if (req.file) {
-      const base64 = req.file.buffer.toString('base64');
-      const mimeType = req.file.mimetype;
-      attachmentData = `data:${mimeType};base64,${base64}`;
+      try {
+        // Validate file type (similar to excuseRequestController)
+        const allowedTypes = ['image/jpeg', 'image/png', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+        if (!allowedTypes.includes(req.file.mimetype)) {
+          return res.status(400).json({
+            message: 'Invalid file type',
+            error: 'Only JPEG, PNG, PDF, DOC, and DOCX files are allowed'
+          });
+        }
+
+        // Generate unique filename
+        const timestamp = Date.now();
+        const filename = `leave-requests/${timestamp}-${req.file.originalname}`;
+
+        // Upload to Vercel Blob
+        attachmentUrl = await uploadToBlob(req.file.buffer, filename, {
+          contentType: req.file.mimetype
+        });
+
+
+        console.log('File uploaded successfully to Vercel Blob:', attachmentUrl);
+
+      } catch (error) {
+        console.error('File upload error:', error);
+        return res.status(500).json({
+          message: 'Error uploading file',
+          error: error.message
+        });
+      }
     }
 
     // Determine initial stage based on the submitter's role
@@ -64,7 +91,7 @@ const createLeaveRequest = async (req, res) => {
       remarks: remarks || '',
       startDate,
       endDate,
-      attachments: attachmentData, // Store base64 data instead of file path
+      attachments: attachmentUrl, // Store the URL from Vercel Blob
       status: initialStatus,
       currentStageIndex: initialStageIndex,
       submittedDate: new Date(),
@@ -79,7 +106,7 @@ const createLeaveRequest = async (req, res) => {
     const createdRequest = await newRequest.save();
 
     // Notify the requester
-    await Notification.create({
+    await createAndSendNotification({
       userId: requesterId,
       message: `Your leave request has been submitted. Status: ${initialStatus}.`,
       type: 'info',
@@ -90,7 +117,7 @@ const createLeaveRequest = async (req, res) => {
       const approvers = await User.find({ role: firstApproverRole });
       if (approvers.length > 0) {
         for (const approver of approvers) {
-          await Notification.create({
+          await createAndSendNotification({
             userId: approver._id,
             message: `New leave request from ${requesterName} is awaiting your approval.`,
             type: 'info',
@@ -231,7 +258,7 @@ const approveLeaveRequest = async (req, res) => {
 
     await request.save();
 
-    await Notification.create({
+    await createAndSendNotification({
       userId: request.studentId,
       message: `Your leave request for ${request.reason} has been approved by ${approverUser.name}. Current status: ${nextStage.name}.`,
       type: 'info',
@@ -241,7 +268,7 @@ const approveLeaveRequest = async (req, res) => {
       const nextApprovers = await User.find({ role: nextStage.approverRole });
       if (nextApprovers.length > 0) {
         for (const approver of nextApprovers) {
-          await Notification.create({
+          await createAndSendNotification({
             userId: approver._id,
             message: `New leave request from ${request.studentName} is awaiting your approval.`,
             type: 'info',
@@ -251,7 +278,7 @@ const approveLeaveRequest = async (req, res) => {
         console.warn(`No users with role '${nextStage.approverRole}' found to send notification.`);
       }
     } else {
-      await Notification.create({
+      await createAndSendNotification({
         userId: request.studentId,
         message: `Your leave request for ${request.reason} has been fully APPROVED.`,
         type: 'success',
@@ -293,7 +320,7 @@ const rejectLeaveRequest = async (req, res) => {
 
     request.status = 'Rejected';
     request.approvals.push({
-      approverRole: approverRole,
+      approverRole: nextExpectedApprover,
       approverId: approverId,
       approverName: approverUser.name, // Add approver's name
       status: 'rejected',
@@ -303,7 +330,7 @@ const rejectLeaveRequest = async (req, res) => {
 
     await request.save();
 
-    await Notification.create({
+    await createAndSendNotification({
       userId: request.studentId,
       message: `Your leave request for ${request.reason} has been REJECTED by ${approverUser.name}.${comment ? ` Reason: ${comment}` : ''}`,
       type: 'error',

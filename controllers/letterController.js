@@ -1,5 +1,6 @@
 import Letter from '../models/Letter.js';
 import User from '../models/User.js';
+import { uploadToBlob } from '../config/vercelBlob.js';
 
 // --- APPROVAL STAGE DEFINITIONS (MUST BE CONSISTENT WITH FRONTEND) ---
 const approvalStages = [
@@ -34,12 +35,21 @@ const createLetter = async (req, res) => {
         return res.status(403).json({ message: 'Forbidden: You are not authorized to create a letter for another user.' });
     }
 
-    // Handle file attachment - convert buffer to base64 if file is uploaded
+    // Handle file attachment - upload to Vercel Blob if file is uploaded
     let attachmentData = null;
     if (req.file) {
-      const base64 = req.file.buffer.toString('base64');
-      const mimeType = req.file.mimetype;
-      attachmentData = `data:${mimeType};base64,${base64}`;
+      try {
+        // Generate a unique filename to prevent collisions
+        const filename = `${Date.now()}-${req.file.originalname}`;
+        const blobUrl = await uploadToBlob(req.file.buffer, filename, {
+          contentType: req.file.mimetype,
+          addRandomSuffix: false // We are already generating a unique filename
+        });
+        attachmentData = blobUrl; // Store the URL returned by Vercel Blob
+      } catch (uploadError) {
+        console.error("Error uploading file to Vercel Blob:", uploadError);
+        return res.status(500).json({ message: 'Failed to upload attachment', error: uploadError.message });
+      }
     }
 
     const initialStageIndex = submitterRoleToInitialStageIndex[submitterRole] !== undefined
@@ -122,8 +132,22 @@ const getLetterById = async (req, res) => {
     try {
         const letter = await Letter.findById(id).populate('approvals.approverId', 'name email role');
         if (letter) {
-            // Authorization check: only admin or the user who created the letter can view it
-            if (req.user.role.toLowerCase() !== 'admin' && req.user._id.toString() !== letter.studentId.toString()) {
+            // Authorization check:
+            // 1. Admin can view any letter.
+            // 2. The student who created the letter can view it.
+            // 3. An approver can view the letter if it's currently at their approval stage,
+            //    or if they have previously interacted with this letter (approved/rejected).
+            const isAdmin = req.user.role.toLowerCase() === 'admin';
+            const isOwner = req.user._id.toString() === letter.studentId.toString();
+
+            const currentApprovalStage = approvalStages[letter.currentStageIndex];
+            const isCurrentApprover = currentApprovalStage && currentApprovalStage.approverRole === req.user.role;
+
+            const hasPreviouslyInteracted = letter.approvals.some(
+                (approval) => approval.approverRole === req.user.role && approval.status !== 'pending'
+            );
+
+            if (!isAdmin && !isOwner && !isCurrentApprover && !hasPreviouslyInteracted) {
                 return res.status(403).json({ message: 'Forbidden: You are not authorized to view this letter.' });
             }
             res.json(letter);

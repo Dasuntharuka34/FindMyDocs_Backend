@@ -132,6 +132,27 @@ const authUser = async (req, res) => {
       return res.status(401).json({ message: 'Invalid NIC or password' });
     }
 
+    // Check maintenance mode - block non-admin users
+    const SystemConfig = (await import('../models/SystemConfig.js')).default;
+    const maintenanceMode = await SystemConfig.findOne({ key: 'MAINTENANCE_MODE' });
+
+    if (maintenanceMode && maintenanceMode.value === true) {
+      // Allow admins to login during maintenance
+      if (!user.role || user.role.toLowerCase() !== 'admin') {
+        await logSecurityEvent({
+          eventType: 'LOGIN_BLOCKED',
+          userId: user._id,
+          userEmail: user.email,
+          userNic: nic,
+          reason: 'Maintenance mode active'
+        }, req);
+        return res.status(503).json({
+          message: 'System is currently under maintenance. Please try again later.',
+          maintenance: true
+        });
+      }
+    }
+
     const token = generateToken(user._id);
 
     await logSecurityEvent({

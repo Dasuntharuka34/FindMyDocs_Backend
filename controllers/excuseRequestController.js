@@ -217,10 +217,14 @@ const getExcuseRequestsByUserId = async (req, res) => {
   }
 };
 
-// --- GET PENDING APPROVALS (Updated to be role-based) ---
+// --- GET PENDING APPROVALS (Updated to be role-based with defensive checks) ---
 const getPendingExcuseApprovals = async (req, res) => {
   try {
+    if (!req.user || !req.user.role) {
+      return res.status(401).json({ message: 'User role not found' });
+    }
     const userRole = req.user.role;
+    const isSystemAdmin = userRole.toLowerCase() === 'admin';
 
     const workflow = await Workflow.findOne({ requestType: 'Excuse', isActive: true });
     if (!workflow) {
@@ -228,14 +232,17 @@ const getPendingExcuseApprovals = async (req, res) => {
     }
 
     // Find all steps where this user's role is the approver
-    const userSteps = workflow.steps.filter(step => step.approverRole === userRole);
+    const steps = workflow.steps || [];
+    const userSteps = steps.filter(step =>
+      step.approverRole && step.approverRole.toLowerCase() === userRole.toLowerCase()
+    );
 
-    if (userSteps.length === 0 && userRole !== 'Admin') {
+    if (userSteps.length === 0 && !isSystemAdmin) {
       return res.status(200).json([]); // No steps for this role
     }
 
     let query = {};
-    if (userRole !== 'Admin') {
+    if (!isSystemAdmin) {
       const pendingStatuses = userSteps.map(step => step.name);
       query = { status: { $in: pendingStatuses } };
     }
@@ -249,7 +256,11 @@ const getPendingExcuseApprovals = async (req, res) => {
     res.json(requests);
   } catch (error) {
     console.error("Error fetching pending excuse approvals:", error);
-    res.status(500).json({ message: 'Server error fetching pending approvals', error: error.message });
+    res.status(500).json({
+      message: 'Server error fetching pending approvals',
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' || !process.env.VERCEL ? error.stack : undefined
+    });
   }
 };
 

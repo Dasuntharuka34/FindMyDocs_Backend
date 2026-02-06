@@ -192,13 +192,17 @@ const createLeaveRequest = async (req, res) => {
   }
 };
 
-// --- GET PENDING APPROVALS (Updated to be role-based) ---
-// @desc    Get all pending leave requests for a specific role
+// --- GET PENDING APPROVALS (Updated to be role-based with defensive checks) ---
+// @desc    Get all pending leave requests for the user's role
 // @route   GET /api/leaverequests/pendingApprovals
 // @access  Private
 const getPendingLeaveRequests = async (req, res) => {
   try {
+    if (!req.user || !req.user.role) {
+      return res.status(401).json({ message: 'User role not found' });
+    }
     const userRole = req.user.role;
+    const isSystemAdmin = userRole.toLowerCase() === 'admin';
 
     // Fetch dynamic workflow
     const workflow = await Workflow.findOne({ requestType: 'Leave', isActive: true });
@@ -207,14 +211,17 @@ const getPendingLeaveRequests = async (req, res) => {
     }
 
     // Find all steps where this user's role is the approver
-    const userSteps = workflow.steps.filter(step => step.approverRole === userRole);
+    const steps = workflow.steps || [];
+    const userSteps = steps.filter(step =>
+      step.approverRole && step.approverRole.toLowerCase() === userRole.toLowerCase()
+    );
 
-    if (userSteps.length === 0 && userRole !== 'Admin') {
+    if (userSteps.length === 0 && !isSystemAdmin) {
       return res.status(200).json([]); // No steps for this role
     }
 
     let query = {};
-    if (userRole !== 'Admin') {
+    if (!isSystemAdmin) {
       const pendingStatuses = userSteps.map(step => step.name);
       query = { status: { $in: pendingStatuses } };
     }
@@ -228,7 +235,11 @@ const getPendingLeaveRequests = async (req, res) => {
     res.status(200).json(requests);
   } catch (error) {
     console.error("Error fetching pending leave requests:", error);
-    res.status(500).json({ message: 'Error fetching pending leave requests', error: error.message });
+    res.status(500).json({
+      message: 'Error fetching pending leave requests',
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' || !process.env.VERCEL ? error.stack : undefined
+    });
   }
 };
 // --- END GET PENDING APPROVALS ---
@@ -414,7 +425,7 @@ const rejectLeaveRequest = async (req, res) => {
 
     request.status = 'Rejected';
     request.approvals.push({
-      approverRole: nextExpectedApprover,
+      approverRole: currentStage.approverRole,
       approverId: approverId,
       approverName: approverUser.name, // Add approver's name
       status: 'rejected',
@@ -514,7 +525,7 @@ const bulkApproveLeaveRequests = async (req, res) => {
 
 
         // Check for Auto Approval
-        const shouldAutoApprove = await evaluateAutoApproval(finalData, 'Leave');
+        const shouldAutoApprove = await evaluateAutoApproval({ ...request.toObject() }, 'Leave');
 
         if (shouldAutoApprove) {
           request.status = 'Approved';
@@ -551,7 +562,7 @@ const bulkApproveLeaveRequests = async (req, res) => {
               approvers.forEach(approver => {
                 createAndSendNotification({
                   userId: approver._id,
-                  message: `New leave request from ${req.user.name} is awaiting approval.`,
+                  message: `New leave request from ${request.studentName} is awaiting approval.`,
                   type: 'info',
                 }).catch(e => console.error(e));
               });
@@ -559,26 +570,7 @@ const bulkApproveLeaveRequests = async (req, res) => {
           }
         }
 
-        const createdRequest = await request.save();
-
-        if (nextStage.approverRole) {
-          // Notify next approvers
-          User.find({ role: nextStage.approverRole }).then(approvers => {
-            approvers.forEach(approver => {
-              createAndSendNotification({
-                userId: approver._id,
-                message: `New leave request from ${request.studentName} is awaiting approval.`,
-                type: 'info',
-              }).catch(e => console.error(e));
-            });
-          });
-        } else {
-          createAndSendNotification({
-            userId: request.studentId,
-            message: `Your leave request for ${request.reason} has been fully APPROVED.`,
-            type: 'success',
-          }).catch(console.error);
-        }
+        await request.save();
 
         successCount++;
       } catch (err) {
@@ -681,4 +673,3 @@ export {
   getPendingLeaveRequests, rejectLeaveRequest,
   bulkApproveLeaveRequests, bulkRejectLeaveRequests
 };
-

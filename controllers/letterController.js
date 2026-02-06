@@ -162,13 +162,17 @@ const getLetterById = async (req, res) => {
 };
 
 
-// --- GET PENDING APPROVALS (Updated to be role-based) ---
+// --- GET PENDING APPROVALS (Updated to be role-based with defensive checks) ---
 // @desc    Get pending approvals for letters based on user role
 // @route   GET /api/letters/pendingApprovals
 // @access  Private (Staff, Lecturer, HOD, Dean, VC, Admin)
 const getPendingApprovals = async (req, res) => {
     try {
+        if (!req.user || !req.user.role) {
+            return res.status(401).json({ message: 'User role not found' });
+        }
         const userRole = req.user.role;
+        const isSystemAdmin = userRole.toLowerCase() === 'admin';
 
         const workflow = await Workflow.findOne({ requestType: 'Letter', isActive: true });
         if (!workflow) {
@@ -176,14 +180,17 @@ const getPendingApprovals = async (req, res) => {
         }
 
         // Find all steps where this user's role is the approver
-        const userSteps = workflow.steps.filter(step => step.approverRole === userRole);
+        const steps = workflow.steps || [];
+        const userSteps = steps.filter(step =>
+            step.approverRole && step.approverRole.toLowerCase() === userRole.toLowerCase()
+        );
 
-        if (userSteps.length === 0 && userRole !== 'Admin') {
+        if (userSteps.length === 0 && !isSystemAdmin) {
             return res.status(200).json([]); // No steps for this role
         }
 
         let query = {};
-        if (userRole !== 'Admin') {
+        if (!isSystemAdmin) {
             const pendingStatuses = userSteps.map(step => step.name);
             query = { status: { $in: pendingStatuses } };
         }
@@ -196,7 +203,11 @@ const getPendingApprovals = async (req, res) => {
         res.json(letters);
     } catch (error) {
         console.error("Error fetching pending approvals:", error);
-        res.status(500).json({ message: 'Server error fetching approvals', error: error.message });
+        res.status(500).json({
+            message: 'Server error fetching approvals',
+            error: error.message,
+            stack: process.env.NODE_ENV === 'development' || !process.env.VERCEL ? error.stack : undefined
+        });
     }
 };
 // --- END GET PENDING APPROVALS ---
@@ -387,7 +398,7 @@ const bulkRejectLetters = async (req, res) => {
                 const stages = workflow ? workflow.steps : [];
 
                 const currentStage = stages[letter.currentStageIndex];
-                if (req.user.role !== currentStage.approverRole) {
+                if (req.user && req.user.role !== currentStage.approverRole) {
                     failureCount++;
                     errors.push(`Not authorized for letter ${id}`);
                     continue;
@@ -427,4 +438,3 @@ const bulkRejectLetters = async (req, res) => {
 };
 
 export { createLetter, getLetterById, getLettersByUserId, getPendingApprovals, updateLetterStatus, getAllLetters, bulkApproveLetters, bulkRejectLetters };
-

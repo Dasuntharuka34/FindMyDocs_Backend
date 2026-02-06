@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import path from 'path';
-import { protect, admin } from '../utils/authMiddleware.js';
+import { protect, admin } from '../middleware/authMiddleware.js';
 
 import {
   approveExcuseRequest,

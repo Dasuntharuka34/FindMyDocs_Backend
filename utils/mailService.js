@@ -19,7 +19,7 @@ export const sendEmail = async (emailOptions) => {
   try {
     // Check if email notifications are enabled in system config
     const SystemConfig = (await import('../models/SystemConfig.js')).default;
-    const emailNotificationsConfig = await SystemConfig.findOne({ key: 'EMAIL_NOTIFICATIONS' });
+    const emailNotificationsConfig = await SystemConfig.findOne({ key: 'EMAIL_NOTIFICATIONS_ENABLED' });
 
     if (emailNotificationsConfig && emailNotificationsConfig.value === false) {
       console.log('Email notifications are disabled. Skipping email to:', emailOptions.to);

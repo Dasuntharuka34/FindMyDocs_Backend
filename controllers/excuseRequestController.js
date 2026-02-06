@@ -217,22 +217,35 @@ const getExcuseRequestsByUserId = async (req, res) => {
   }
 };
 
-// --- GET PENDING APPROVALS ---
+// --- GET PENDING APPROVALS (Updated to be role-based) ---
 const getPendingExcuseApprovals = async (req, res) => {
-  const { statusName } = req.params;
-
   try {
-    const workflow = await Workflow.findOne({ requestType: 'Excuse', isActive: true });
-    const stages = workflow ? workflow.steps : [];
-    const validStatuses = stages.map(stage => stage.name);
+    const userRole = req.user.role;
 
-    // Check if it's a valid status for this request type
-    if (stages.length > 0 && !validStatuses.includes(statusName)) {
-      return res.status(400).json({ message: 'Invalid status name for pending approvals' });
+    const workflow = await Workflow.findOne({ requestType: 'Excuse', isActive: true });
+    if (!workflow) {
+      return res.status(404).json({ message: 'Active Excuse workflow not found' });
     }
 
-    const requests = await ExcuseRequest.find({ status: statusName })
-      .sort({ submittedDate: -1 }); // Sort by most recent first
+    // Find all steps where this user's role is the approver
+    const userSteps = workflow.steps.filter(step => step.approverRole === userRole);
+
+    if (userSteps.length === 0 && userRole !== 'Admin') {
+      return res.status(200).json([]); // No steps for this role
+    }
+
+    let query = {};
+    if (userRole !== 'Admin') {
+      const pendingStatuses = userSteps.map(step => step.name);
+      query = { status: { $in: pendingStatuses } };
+    }
+    // Admin sees all pending (not Approved/Rejected)
+    else {
+      query = { status: { $nin: ['Approved', 'Rejected'] } };
+    }
+
+    const requests = await ExcuseRequest.find(query)
+      .sort({ submittedDate: -1 });
     res.json(requests);
   } catch (error) {
     console.error("Error fetching pending excuse approvals:", error);

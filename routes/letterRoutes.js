@@ -44,8 +44,8 @@ router.post('/', protect, upload.single('attachments'), createLetter);
 // Route to get letters by a specific user ID
 router.get('/byUser/:userId', protect, getLettersByUserId);
 
-// Route to get pending approvals for a specific status name
-router.get('/pendingApprovals/:statusName', protect, getPendingApprovals);
+// Route to get pending approvals for the user's role
+router.get('/pendingApprovals', protect, getPendingApprovals);
 
 // Route to update letter status (Approve/Reject)
 // Route to update letter status (Approve/Reject)

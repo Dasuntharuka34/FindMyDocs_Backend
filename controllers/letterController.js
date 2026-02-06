@@ -162,27 +162,44 @@ const getLetterById = async (req, res) => {
 };
 
 
-// @desc    Get pending approvals for a specific status/role
-// @route   GET /api/letters/pendingApprovals/:statusName
-// @access  Private (Staff, Lecturer, HOD, Dean, VC)
+// --- GET PENDING APPROVALS (Updated to be role-based) ---
+// @desc    Get pending approvals for letters based on user role
+// @route   GET /api/letters/pendingApprovals
+// @access  Private (Staff, Lecturer, HOD, Dean, VC, Admin)
 const getPendingApprovals = async (req, res) => {
-    const { statusName } = req.params;
-
     try {
-        const workflow = await Workflow.findOne({ requestType: 'Letter', isActive: true });
-        const stages = workflow ? workflow.steps : [];
-        const isValidStatus = stages.some(stage => stage.name === statusName);
+        const userRole = req.user.role;
 
-        if (stages.length > 0 && !isValidStatus) {
-            return res.status(400).json({ message: 'Invalid status name provided for pending approvals.' });
+        const workflow = await Workflow.findOne({ requestType: 'Letter', isActive: true });
+        if (!workflow) {
+            return res.status(404).json({ message: 'Active Letter workflow not found' });
         }
-        const letters = await Letter.find({ status: statusName });
+
+        // Find all steps where this user's role is the approver
+        const userSteps = workflow.steps.filter(step => step.approverRole === userRole);
+
+        if (userSteps.length === 0 && userRole !== 'Admin') {
+            return res.status(200).json([]); // No steps for this role
+        }
+
+        let query = {};
+        if (userRole !== 'Admin') {
+            const pendingStatuses = userSteps.map(step => step.name);
+            query = { status: { $in: pendingStatuses } };
+        }
+        // Admin sees all pending (not Approved/Rejected)
+        else {
+            query = { status: { $nin: ['Approved', 'Rejected'] } };
+        }
+
+        const letters = await Letter.find(query).sort({ submittedDate: -1 });
         res.json(letters);
     } catch (error) {
         console.error("Error fetching pending approvals:", error);
         res.status(500).json({ message: 'Server error fetching approvals', error: error.message });
     }
 };
+// --- END GET PENDING APPROVALS ---
 
 
 // @desc    Update letter status (Approve/Reject)

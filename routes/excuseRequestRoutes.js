@@ -65,7 +65,7 @@ router.route('/:id')
   .delete(protect, admin, deleteExcuseRequest); // Admin only
 
 
-router.get('/pendingApprovals/:statusName', protect, getPendingExcuseApprovals);
+router.get('/pendingApprovals', protect, getPendingExcuseApprovals);
 
 // @desc    Bulk Approve Excuse Requests
 // @route   POST /api/excuserequests/bulk-approve

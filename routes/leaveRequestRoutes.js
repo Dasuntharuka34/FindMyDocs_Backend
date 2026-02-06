@@ -48,9 +48,9 @@ router.route('/')
 // @route   GET /api/leaverequests
 router.get('/', protect, admin, getLeaveRequests);
 
-// @desc    Get all pending leave requests for a specific status
-// @route   GET /api/leaverequests/pendingApprovals/:status
-router.get('/pendingApprovals/:status', protect, getPendingLeaveRequests);
+// @desc    Get all pending leave requests for the user's role
+// @route   GET /api/leaverequests/pendingApprovals
+router.get('/pendingApprovals', protect, getPendingLeaveRequests);
 
 // @desc    Approve a leave request
 // @route   PUT /api/leaverequests/:id/approve

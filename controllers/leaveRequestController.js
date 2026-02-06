@@ -192,31 +192,46 @@ const createLeaveRequest = async (req, res) => {
   }
 };
 
-// --- FIX STARTS HERE ---
-// @desc    Get all pending leave requests for a specific status
-// @route   GET /api/leaverequests/pendingApprovals/:status
-// @access  Private
+// --- GET PENDING APPROVALS (Updated to be role-based) ---
+// @desc    Get all pending leave requests for a specific role
+// @route   GET /api/leaverequests/pendingApprovals
+// @access  Private
 const getPendingLeaveRequests = async (req, res) => {
   try {
-    const { status } = req.params;
+    const userRole = req.user.role;
 
-    // Fetch dynamic workflow (optional validation)
+    // Fetch dynamic workflow
     const workflow = await Workflow.findOne({ requestType: 'Leave', isActive: true });
-    const stages = workflow ? workflow.steps : [];
-    const validStatuses = stages.map(s => s.name);
-
-    if (stages.length > 0 && !validStatuses.includes(status)) {
-      return res.status(400).json({ message: 'Invalid status for leave requests' });
+    if (!workflow) {
+      return res.status(404).json({ message: 'Active Leave workflow not found' });
     }
 
-    const requests = await LeaveRequest.find({ status: status });
+    // Find all steps where this user's role is the approver
+    const userSteps = workflow.steps.filter(step => step.approverRole === userRole);
+
+    if (userSteps.length === 0 && userRole !== 'Admin') {
+      return res.status(200).json([]); // No steps for this role
+    }
+
+    let query = {};
+    if (userRole !== 'Admin') {
+      const pendingStatuses = userSteps.map(step => step.name);
+      query = { status: { $in: pendingStatuses } };
+    }
+    // Admin sees all pending (not Approved/Rejected)
+    else {
+      query = { status: { $nin: ['Approved', 'Rejected'] } };
+    }
+
+    const requests = await LeaveRequest.find(query)
+      .sort({ submittedDate: -1 });
     res.status(200).json(requests);
   } catch (error) {
     console.error("Error fetching pending leave requests:", error);
     res.status(500).json({ message: 'Error fetching pending leave requests', error: error.message });
   }
 };
-// --- FIX ENDS HERE ---
+// --- END GET PENDING APPROVALS ---
 
 // @desc    Get all leave requests (for all approvers)
 // @route   GET /api/leaverequests

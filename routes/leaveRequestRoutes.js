@@ -39,8 +39,8 @@ const upload = multer({
 // @desc    Submit a new leave request form with an optional file upload
 // @route   POST /api/leaverequests
 router.route('/')
-    .post(protect, upload.single('leaveForm'), createLeaveRequest)
-    .get(protect, admin, getLeaveRequests); // Admin only
+  .post(protect, upload.fields([{ name: 'leaveForm', maxCount: 1 }, { name: 'supportingDocument', maxCount: 1 }]), createLeaveRequest)
+  .get(protect, admin, getLeaveRequests); // Admin only
 
 // @desc    Get all leave requests (for approvers)
 // @route   GET /api/leaverequests
@@ -59,8 +59,8 @@ router.put('/:id/approve', protect, approveLeaveRequest);
 router.put('/:id/reject', protect, rejectLeaveRequest);
 
 router.route('/:id')
-    .get(protect, getLeaveRequestById)
-    .delete(protect, admin, deleteLeaveRequest); // Admin only
+  .get(protect, getLeaveRequestById)
+  .delete(protect, admin, deleteLeaveRequest); // Admin only
 
 // @desc    Get all leave requests for a specific user
 // @route   GET /api/leaverequests/byUser/:userId

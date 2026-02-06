@@ -45,11 +45,23 @@ const createLeaveRequest = async (req, res) => {
 
     // Handle file attachment with validation and upload to Vercel Blob
     let attachmentUrl = null;
-    if (req.file) {
+    const uploadedFile = req.file || (req.files && (req.files['leaveForm']?.[0] || req.files['supportingDocument']?.[0]));
+
+    if (uploadedFile) {
       try {
+        console.log('Processing uploaded file:', uploadedFile.originalname);
         // Validate file type (similar to excuseRequestController)
-        const allowedTypes = ['image/jpeg', 'image/png', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-        if (!allowedTypes.includes(req.file.mimetype)) {
+        const allowedTypes = [
+          'image/jpeg',
+          'image/jpg',
+          'image/png',
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        ];
+
+        if (!allowedTypes.includes(uploadedFile.mimetype)) {
+          console.error('Invalid file type:', uploadedFile.mimetype);
           return res.status(400).json({
             message: 'Invalid file type',
             error: 'Only JPEG, PNG, PDF, DOC, and DOCX files are allowed'
@@ -58,11 +70,11 @@ const createLeaveRequest = async (req, res) => {
 
         // Generate unique filename
         const timestamp = Date.now();
-        const filename = `leave-requests/${timestamp}-${req.file.originalname}`;
+        const filename = `leave-requests/${timestamp}-${uploadedFile.originalname.replace(/\s+/g, '_')}`;
 
         // Upload to Vercel Blob
-        attachmentUrl = await uploadToBlob(req.file.buffer, filename, {
-          contentType: req.file.mimetype
+        attachmentUrl = await uploadToBlob(uploadedFile.buffer, filename, {
+          contentType: uploadedFile.mimetype
         });
 
 
@@ -77,10 +89,18 @@ const createLeaveRequest = async (req, res) => {
       }
     }
 
-    // Determine initial stage based on the submitter's role
-    const initialStageIndex = submitterRoleToInitialStageIndex[requesterRole] || 0;
-    const initialStatus = approvalStages[initialStageIndex].name;
-    const firstApproverRole = approvalStages[initialStageIndex].approverRole;
+    // Determine initial stage based on the submitter's role (case-insensitive)
+    const normalizedRole = requesterRole.charAt(0).toUpperCase() + requesterRole.slice(1).toLowerCase();
+    const initialStageIndex = submitterRoleToInitialStageIndex[normalizedRole] ?? 1; // Default to Student stage (1)
+
+    const stage = approvalStages[initialStageIndex];
+    const initialStatus = stage.name;
+    const firstApproverRole = stage.approverRole;
+
+    if (!firstApproverRole && initialStageIndex < approvalStages.length - 1) {
+      console.error('Invalid stage configuration: firstApproverRole is null for active stage', initialStatus);
+      return res.status(500).json({ message: 'Internal server error: Invalid approval stage configuration' });
+    }
 
     const newRequest = new LeaveRequest({
       studentId: requesterId,
@@ -238,11 +258,11 @@ const approveLeaveRequest = async (req, res) => {
     const approverRole = approvalStages[request.currentStageIndex].approverRole;
     const currentApproval = request.approvals.find(a => a.status === 'pending' && a.approverRole === approverRole);
     if (currentApproval) {
-        currentApproval.status = 'approved';
-        currentApproval.approvedAt = new Date();
-        currentApproval.approverId = approverId;
-        currentApproval.approverName = approverUser.name;
-        currentApproval.comment = comment || '';
+      currentApproval.status = 'approved';
+      currentApproval.approvedAt = new Date();
+      currentApproval.approverId = approverId;
+      currentApproval.approverName = approverUser.name;
+      currentApproval.comment = comment || '';
     }
 
     request.currentStageIndex = nextStageIndex;
@@ -250,10 +270,10 @@ const approveLeaveRequest = async (req, res) => {
 
     // Add new pending approval for the next stage
     if (nextStage.approverRole) {
-        request.approvals.push({
-            approverRole: nextStage.approverRole,
-            status: 'pending'
-        });
+      request.approvals.push({
+        approverRole: nextStage.approverRole,
+        status: 'pending'
+      });
     }
 
     await request.save();
@@ -369,8 +389,8 @@ const deleteLeaveRequest = async (req, res) => {
 };
 
 export {
-    approveLeaveRequest, createLeaveRequest, deleteLeaveRequest, getLeaveRequestById, getLeaveRequests, getLeaveRequestsByUserId,
-    // --- EXPORT THE NEW FUNCTION ---
-    getPendingLeaveRequests, rejectLeaveRequest
+  approveLeaveRequest, createLeaveRequest, deleteLeaveRequest, getLeaveRequestById, getLeaveRequests, getLeaveRequestsByUserId,
+  // --- EXPORT THE NEW FUNCTION ---
+  getPendingLeaveRequests, rejectLeaveRequest
 };
 

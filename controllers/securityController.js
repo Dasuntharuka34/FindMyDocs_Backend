@@ -110,24 +110,27 @@ const getPermissionAudit = async (req, res) => {
         ]);
 
         const rolePermissionsMap = roles.reduce((acc, role) => {
-            acc[role.name] = role.permissions;
+            acc[role.name.toLowerCase()] = role.permissions;
             return acc;
         }, {});
 
         // Include Admin default if not in roles table
-        if (!rolePermissionsMap['Admin']) {
-            rolePermissionsMap['Admin'] = ['ALL_PERMISSIONS'];
+        if (!rolePermissionsMap['admin']) {
+            rolePermissionsMap['admin'] = ['ALL_PERMISSIONS'];
         }
 
-        const audit = users.map(user => ({
-            userId: user._id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            department: user.department,
-            isActive: user.isActive,
-            permissions: rolePermissionsMap[user.role] || [],
-        }));
+        const audit = users.map(user => {
+            const userRoleLower = user.role?.toLowerCase() || '';
+            return {
+                userId: user._id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                department: user.department,
+                isActive: user.isActive,
+                permissions: rolePermissionsMap[userRoleLower] || [],
+            };
+        });
 
         res.json(audit);
     } catch (error) {

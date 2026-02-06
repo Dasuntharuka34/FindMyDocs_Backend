@@ -12,6 +12,18 @@ export const getRoles = async (req, res) => {
     }
 };
 
+// @desc    Get public roles (names and descriptions only, excluding Admin)
+// @route   GET /api/roles/public
+// @access  Public
+export const getPublicRoles = async (req, res) => {
+    try {
+        const roles = await Role.find({ name: { $ne: 'Admin' } }, 'name description');
+        res.json(roles);
+    } catch (error) {
+        res.status(500).json({ message: 'Error fetching public roles', error: error.message });
+    }
+};
+
 // @desc    Create a role
 // @route   POST /api/roles
 // @access  Private/Admin

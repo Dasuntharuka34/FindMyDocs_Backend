@@ -4,12 +4,14 @@ import {
     createRole,
     updateRole,
     deleteRole,
-    initializeRoles
+    initializeRoles,
+    getPublicRoles
 } from '../controllers/roleController.js';
 import { protect, admin } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
+router.get('/public', getPublicRoles);
 router.get('/', protect, admin, getRoles);
 router.post('/', protect, admin, createRole);
 router.put('/:id', protect, admin, updateRole);

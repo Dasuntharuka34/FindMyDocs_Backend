@@ -53,7 +53,7 @@ const checkPermission = (permission) => {
         return next();
       }
 
-      const role = await Role.findOne({ name: req.user.role });
+      const role = await Role.findOne({ name: { $regex: new RegExp(`^${req.user.role}$`, 'i') } });
       if (!role) {
         return res.status(401).json({ message: 'Role not found' });
       }

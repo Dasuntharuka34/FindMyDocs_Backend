@@ -10,10 +10,10 @@ import { evaluateAutoApproval } from '../utils/autoApprovalEngine.js';
 
 // Maps student role to initial stage index (fallback logic)
 const submitterRoleToInitialStageIndex = {
-  "Student": 1,
-  "Lecturer": 2,
-  "HOD": 3,
-  "Dean": 4,
+  "Student": 0,
+  "Lecturer": 1,
+  "HOD": 2,
+  "Dean": 3,
 };
 
 // --- CREATE EXCUSE REQUEST ---
@@ -80,11 +80,9 @@ const createExcuseRequest = async (req, res) => {
     // Fetch dynamic workflow
     const workflow = await Workflow.findOne({ requestType: 'Excuse', isActive: true });
     const stages = workflow ? workflow.steps : [
-      { name: "Submitted", approverRole: null },
       { name: "Pending Lecturer Approval", approverRole: "Lecturer" },
       { name: "Pending HOD Approval", approverRole: "HOD" },
-      { name: "Pending Dean Approval", approverRole: "Dean" },
-      { name: "Approved", approverRole: null }
+      { name: "Pending Dean Approval", approverRole: "Dean" }
     ];
 
     const initialStageIndex = submitterRoleToInitialStageIndex[studentRole] || (stages.length > 2 ? 1 : 0);
@@ -301,8 +299,8 @@ const approveExcuseRequest = async (req, res) => {
     }
 
     const nextStageIndex = request.currentStageIndex + 1;
-    if (nextStageIndex >= stages.length - 1 || stages[nextStageIndex].name === 'Approved') {
-      request.currentStageIndex = stages.length - 1;
+    if (nextStageIndex >= stages.length) {
+      request.currentStageIndex = stages.length; // Beyond last stage
       request.status = 'Approved';
     } else {
       const nextStage = stages[nextStageIndex];
@@ -329,15 +327,17 @@ const approveExcuseRequest = async (req, res) => {
     });
 
     // Notify next approver
-    const nextStage = stages[request.currentStageIndex];
-    if (nextStage.approverRole) {
-      const nextApprovers = await User.find({ role: nextStage.approverRole });
-      for (const approver of nextApprovers) {
-        await createAndSendNotification({
-          userId: approver._id,
-          message: `New excuse request from ${request.studentName} is awaiting your approval.`,
-          type: 'info',
-        });
+    if (request.status !== 'Approved') {
+      const nextStage = stages[request.currentStageIndex];
+      if (nextStage && nextStage.approverRole) {
+        const nextApprovers = await User.find({ role: nextStage.approverRole });
+        for (const approver of nextApprovers) {
+          await createAndSendNotification({
+            userId: approver._id,
+            message: `New excuse request from ${request.studentName} is awaiting your approval.`,
+            type: 'info',
+          });
+        }
       }
     } else {
       await createAndSendNotification({
@@ -485,8 +485,8 @@ const bulkApproveExcuseRequests = async (req, res) => {
 
         const nextStageIndex = request.currentStageIndex + 1;
 
-        if (nextStageIndex >= stages.length - 1 || stages[nextStageIndex].name === 'Approved') {
-          request.currentStageIndex = stages.length - 1;
+        if (nextStageIndex >= stages.length) {
+          request.currentStageIndex = stages.length;
           request.status = 'Approved';
         } else {
           const nextStage = stages[nextStageIndex];

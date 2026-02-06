@@ -7,10 +7,10 @@ import { createAndSendNotification } from './notificationController.js';
 import { evaluateAutoApproval } from '../utils/autoApprovalEngine.js';
 
 const submitterRoleToInitialStageIndex = {
-  "Student": 1,
-  "Lecturer": 2,
-  "HOD": 3,
-  "Dean": 4,
+  "Student": 0,
+  "Lecturer": 1,
+  "HOD": 2,
+  "Dean": 3,
 };
 
 // @desc    Create a new leave request
@@ -83,11 +83,9 @@ const createLeaveRequest = async (req, res) => {
     // Fetch dynamic workflow
     const workflow = await Workflow.findOne({ requestType: 'Leave', isActive: true });
     const stages = workflow ? workflow.steps : [
-      { name: "Submitted", approverRole: null },
       { name: "Pending Lecturer Approval", approverRole: "Lecturer" },
       { name: "Pending HOD Approval", approverRole: "HOD" },
-      { name: "Pending Dean Approval", approverRole: "Dean" },
-      { name: "Approved", approverRole: null }
+      { name: "Pending Dean Approval", approverRole: "Dean" }
     ];
 
     // Determine initial stage based on the submitter's role (case-insensitive)
@@ -121,11 +119,6 @@ const createLeaveRequest = async (req, res) => {
       submittedDate: new Date(),
     });
 
-    // Add the first stage to the approvals array
-    newRequest.approvals.push({
-      approverRole: firstApproverRole,
-      status: 'pending'
-    });
     // Check for Auto Approval
     const shouldAutoApprove = await evaluateAutoApproval({ ...req.body, startDate, endDate }, 'Leave');
 
@@ -328,12 +321,13 @@ const approveLeaveRequest = async (req, res) => {
     }
 
     const nextStageIndex = request.currentStageIndex + 1;
-    let nextStage;
-
-    if (nextStageIndex >= stages.length - 1 || stages[nextStageIndex].name === 'Approved') {
-      nextStage = stages[stages.length - 1];
+    if (nextStageIndex >= stages.length) {
+      request.currentStageIndex = stages.length; // Beyond last stage
+      request.status = 'Approved';
     } else {
       nextStage = stages[nextStageIndex];
+      request.currentStageIndex = nextStageIndex;
+      request.status = nextStage.name;
     }
 
     // Update the pending approval
@@ -366,18 +360,21 @@ const approveLeaveRequest = async (req, res) => {
       type: 'info',
     });
 
-    if (nextStage.approverRole) {
-      const nextApprovers = await User.find({ role: nextStage.approverRole });
-      if (nextApprovers.length > 0) {
-        for (const approver of nextApprovers) {
-          await createAndSendNotification({
-            userId: approver._id,
-            message: `New leave request from ${request.studentName} is awaiting your approval.`,
-            type: 'info',
-          });
+    if (request.status !== 'Approved') {
+      const nextStage = stages[request.currentStageIndex];
+      if (nextStage && nextStage.approverRole) {
+        const nextApprovers = await User.find({ role: nextStage.approverRole });
+        if (nextApprovers.length > 0) {
+          for (const approver of nextApprovers) {
+            await createAndSendNotification({
+              userId: approver._id,
+              message: `New leave request from ${request.studentName} is awaiting your approval.`,
+              type: 'info',
+            });
+          }
+        } else {
+          console.warn(`No users with role '${nextStage.approverRole}' found to send notification.`);
         }
-      } else {
-        console.warn(`No users with role '${nextStage.approverRole}' found to send notification.`);
       }
     } else {
       await createAndSendNotification({
@@ -547,26 +544,31 @@ const bulkApproveLeaveRequests = async (req, res) => {
 
         } else {
           const nextStageIndex = request.currentStageIndex + 1;
-          const nextStage = stages[nextStageIndex] || stages[stages.length - 1];
-          request.currentStageIndex = nextStageIndex >= stages.length ? stages.length - 1 : nextStageIndex;
-          request.status = nextStage.name;
+          if (nextStageIndex >= stages.length) {
+            request.currentStageIndex = stages.length;
+            request.status = 'Approved';
+          } else {
+            const nextStage = stages[nextStageIndex];
+            request.currentStageIndex = nextStageIndex;
+            request.status = nextStage.name;
 
-          if (nextStage.approverRole) {
-            request.approvals.push({
-              approverRole: nextStage.approverRole,
-              status: 'pending'
-            });
-
-            // Uploading might take time, don't await notification
-            User.find({ role: nextStage.approverRole }).then(approvers => {
-              approvers.forEach(approver => {
-                createAndSendNotification({
-                  userId: approver._id,
-                  message: `New leave request from ${request.studentName} is awaiting approval.`,
-                  type: 'info',
-                }).catch(e => console.error(e));
+            if (nextStage.approverRole) {
+              request.approvals.push({
+                approverRole: nextStage.approverRole,
+                status: 'pending'
               });
-            });
+
+              // Uploading might take time, don't await notification
+              User.find({ role: nextStage.approverRole }).then(approvers => {
+                approvers.forEach(approver => {
+                  createAndSendNotification({
+                    userId: approver._id,
+                    message: `New leave request from ${request.studentName} is awaiting approval.`,
+                    type: 'info',
+                  }).catch(e => console.error(e));
+                });
+              });
+            }
           }
         }
 

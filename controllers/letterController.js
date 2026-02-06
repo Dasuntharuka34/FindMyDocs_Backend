@@ -5,11 +5,11 @@ import { uploadToBlob } from '../config/vercelBlob.js';
 
 // Maps submitter roles to the initial stage index (fallback logic)
 const submitterRoleToInitialStageIndex = {
-    "Student": 1,
-    "Lecturer": 2,
-    "HOD": 3,
-    "Dean": 4,
-    "VC": 5
+    "Student": 0,
+    "Lecturer": 1,
+    "HOD": 2,
+    "Dean": 3,
+    "VC": 4
 };
 
 
@@ -44,11 +44,9 @@ const createLetter = async (req, res) => {
     // Fetch dynamic workflow
     const workflow = await Workflow.findOne({ requestType: 'Letter', isActive: true });
     const stages = workflow ? workflow.steps : [
-        { name: "Submitted", approverRole: null },
         { name: "Pending Lecturer Approval", approverRole: "Lecturer" },
         { name: "Pending HOD Approval", approverRole: "HOD" },
-        { name: "Pending Dean Approval", approverRole: "Dean" },
-        { name: "Approved", approverRole: null }
+        { name: "Pending Dean Approval", approverRole: "Dean" }
     ];
 
     const initialStageIndex = submitterRoleToInitialStageIndex[submitterRole] !== undefined
@@ -253,15 +251,20 @@ const updateLetterStatus = async (req, res) => {
             }
 
             const nextStageIndex = letter.currentStageIndex + 1;
-            const nextStage = stages[nextStageIndex] || stages[stages.length - 1];
-            letter.currentStageIndex = nextStageIndex >= stages.length ? stages.length - 1 : nextStageIndex;
-            letter.status = nextStage.name;
+            if (nextStageIndex >= stages.length) {
+                letter.currentStageIndex = stages.length; // Beyond last stage
+                letter.status = 'Approved';
+            } else {
+                const nextStage = stages[nextStageIndex];
+                letter.currentStageIndex = nextStageIndex;
+                letter.status = nextStage.name;
 
-            if (nextStage.approverRole) {
-                letter.approvals.push({
-                    approverRole: nextStage.approverRole,
-                    status: 'pending'
-                });
+                if (nextStage.approverRole) {
+                    letter.approvals.push({
+                        approverRole: nextStage.approverRole,
+                        status: 'pending'
+                    });
+                }
             }
         } else if (status === 'rejected') {
             if (currentApproval) {
@@ -334,15 +337,20 @@ const bulkApproveLetters = async (req, res) => {
                 }
 
                 const nextStageIndex = letter.currentStageIndex + 1;
-                const nextStage = stages[nextStageIndex] || stages[stages.length - 1];
-                letter.currentStageIndex = nextStageIndex >= stages.length ? stages.length - 1 : nextStageIndex;
-                letter.status = nextStage.name;
+                if (nextStageIndex >= stages.length) {
+                    letter.currentStageIndex = stages.length;
+                    letter.status = 'Approved';
+                } else {
+                    const nextStage = stages[nextStageIndex];
+                    letter.currentStageIndex = nextStageIndex;
+                    letter.status = nextStage.name;
 
-                if (nextStage.approverRole) {
-                    letter.approvals.push({
-                        approverRole: nextStage.approverRole,
-                        status: 'pending'
-                    });
+                    if (nextStage.approverRole) {
+                        letter.approvals.push({
+                            approverRole: nextStage.approverRole,
+                            status: 'pending'
+                        });
+                    }
                 }
 
                 letter.lastUpdated = new Date();

@@ -8,6 +8,8 @@ import {
   deleteForm,
   updateFormStatus,
   getAvailableForms,
+  getFormAnalytics,
+  createNewVersion
 } from '../controllers/formController.js';
 import { protect, admin } from '../middleware/authMiddleware.js';
 

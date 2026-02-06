@@ -84,7 +84,7 @@ app.use('/api/system-config', systemConfigRoutes);
 app.use('/api/departments', departmentRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/workflows', workflowRoutes);
-app.use('/api/security', securityRoutes);
+// app.use('/api/security', securityRoutes); // Handled above
 app.use('/api/developer', developerRoutes);
 app.use('/api/form-templates', templateRoutes);
 app.use('/api/email-management', emailManagementRoutes);
@@ -93,7 +93,7 @@ app.use('/api/request-templates', requestTemplateRoutes);
 app.use('/api/auto-approval-rules', autoApprovalRoutes);
 app.use('/api/database', databaseRoutes);
 app.use('/api/cleanup', cleanupRoutes);
-app.use('/api/departments', departmentRoutes);
+// app.use('/api/departments', departmentRoutes); // Handled above
 
 // --- Root Route ---
 app.get('/', (req, res) => {

@@ -12,7 +12,6 @@ import {
   getLeaveRequests,
   getLeaveRequestsByUserId,
   getPendingLeaveRequests,
-  getPendingLeaveRequests,
   rejectLeaveRequest,
   bulkApproveLeaveRequests,
   bulkRejectLeaveRequests

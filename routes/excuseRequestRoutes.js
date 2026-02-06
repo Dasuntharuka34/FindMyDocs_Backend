@@ -11,7 +11,6 @@ import {
   getExcuseRequests,
   getExcuseRequestsByUserId,
   getPendingExcuseApprovals,
-  getPendingExcuseApprovals,
   rejectExcuseRequest,
   bulkApproveExcuseRequests,
   bulkRejectExcuseRequests

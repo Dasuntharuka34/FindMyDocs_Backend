@@ -331,9 +331,93 @@ const getRequestAnalytics = async (req, res) => {
     }
 };
 
+// @desc    Get bottleneck identification analytics
+// @route   GET /api/analytics/bottlenecks
+// @access  Private/Admin
+const getBottleneckAnalytics = async (req, res) => {
+    try {
+        // We'll analyze Excuse Requests as they have a clear multi-stage process
+        const excuseBottlenecks = await ExcuseRequest.aggregate([
+            { $match: { 'approvals.0': { $exists: true } } },
+            { $unwind: '$approvals' },
+            { $match: { 'approvals.status': { $in: ['approved', 'rejected'] } } },
+            {
+                $project: {
+                    approverRole: '$approvals.approverRole',
+                    approverName: '$approvals.approverName',
+                    duration: {
+                        $subtract: ['$approvals.approvedAt', '$submittedDate'] // Approximation of stage duration
+                    }
+                }
+            },
+            {
+                $group: {
+                    _id: '$approverRole',
+                    avgDuration: { $avg: '$duration' },
+                    count: { $sum: 1 },
+                    slowestApprovers: { $addToSet: '$approverName' }
+                }
+            },
+            { $sort: { avgDuration: -1 } }
+        ]);
+
+        const leaveBottlenecks = await LeaveRequest.aggregate([
+            { $match: { 'approvals.0': { $exists: true } } },
+            { $unwind: '$approvals' },
+            { $match: { 'approvals.status': { $in: ['approved', 'rejected'] } } },
+            {
+                $project: {
+                    approverRole: '$approvals.approverRole',
+                    duration: {
+                        $subtract: ['$approvals.approvedAt', '$submittedDate']
+                    }
+                }
+            },
+            {
+                $group: {
+                    _id: '$approverRole',
+                    avgDuration: { $avg: '$duration' },
+                    count: { $sum: 1 }
+                }
+            },
+            { $sort: { avgDuration: -1 } }
+        ]);
+
+        // Helper to format duration
+        const msToDays = (ms) => ms ? (ms / (1000 * 60 * 60 * 24)).toFixed(2) : 0;
+
+        const formattedExcuseData = excuseBottlenecks.map(b => ({
+            stage: b._id,
+            avgDays: msToDays(b.avgDuration),
+            requestCount: b.count,
+            approvers: b.slowestApprovers.slice(0, 5)
+        }));
+
+        const formattedLeaveData = leaveBottlenecks.map(b => ({
+            stage: b._id,
+            avgDays: msToDays(b.avgDuration),
+            requestCount: b.count
+        }));
+
+        res.json({
+            excuseBottlenecks: formattedExcuseData,
+            leaveBottlenecks: formattedLeaveData,
+            summary: {
+                slowestExcuseStage: formattedExcuseData[0]?.stage || 'N/A',
+                slowestLeaveStage: formattedLeaveData[0]?.stage || 'N/A'
+            }
+        });
+
+    } catch (error) {
+        console.error('Error fetching bottleneck analytics:', error);
+        res.status(500).json({ message: 'Error fetching bottleneck analytics', error: error.message });
+    }
+};
+
 export {
     getActivityDashboard,
     getSystemHealth,
     getUsageStatistics,
     getRequestAnalytics,
+    getBottleneckAnalytics
 };

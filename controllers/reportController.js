@@ -59,6 +59,21 @@ const generateReport = async (req, res) => {
       case 'excuseRequests':
         data = await ExcuseRequest.find(hasDateFilter ? { submittedDate: dateFilter } : {});
         break;
+      case 'approvedRequests':
+        const approvedForms = await FormSubmission.find({
+          status: 'Approved',
+          ...(hasDateFilter ? { submittedAt: dateFilter } : {})
+        }).populate('submittedBy', 'name indexNumber');
+        const approvedLeaves = await LeaveRequest.find({
+          status: 'Approved',
+          ...(hasDateFilter ? { submittedAt: dateFilter } : {})
+        });
+        const approvedExcuses = await ExcuseRequest.find({
+          status: 'Approved',
+          ...(hasDateFilter ? { submittedDate: dateFilter } : {})
+        });
+        data = { formSubmissions: approvedForms, leaveRequests: approvedLeaves, excuseRequests: approvedExcuses };
+        break;
       default:
         return res.status(400).json({ message: 'Invalid report type' });
     }

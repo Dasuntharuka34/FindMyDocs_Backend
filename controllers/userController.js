@@ -320,7 +320,7 @@ const rejectRegistration = async (req, res) => {
 const updateUser = async (req, res) => {
   const { id } = req.params;
 
-  const { name, mobile, department } = req.body;
+  const { name, mobile, department, email, role, indexNumber, nic } = req.body;
 
   // Handle profile picture - upload to Vercel Blob Storage if file is uploaded
   let profilePictureData = null;
@@ -350,7 +350,8 @@ const updateUser = async (req, res) => {
     }
 
     // Authorization check: only admin or the user themselves can update
-    if (req.user.role.toLowerCase() !== 'admin' && req.user._id.toString() !== id) {
+    const isAdmin = req.user.role.toLowerCase() === 'admin';
+    if (!isAdmin && req.user._id.toString() !== id) {
       return res.status(403).json({ message: 'Forbidden: You are not authorized to update this profile.' });
     }
 
@@ -362,9 +363,39 @@ const updateUser = async (req, res) => {
       }
     }
 
+    // Check for email duplicates (Admin only fields)
+    if (email && email !== user.email) {
+      if (!isAdmin) {
+        return res.status(403).json({ message: 'Only administrators can change email addresses.' });
+      }
+      const emailExists = await User.findOne({ email });
+      if (emailExists && emailExists._id.toString() !== user._id.toString()) {
+        return res.status(400).json({ message: 'Email address already in use by another account.' });
+      }
+      user.email = email;
+    }
+
+    // Check for NIC duplicates (Admin only fields)
+    if (nic && nic !== user.nic) {
+      if (!isAdmin) {
+        return res.status(403).json({ message: 'Only administrators can change NIC numbers.' });
+      }
+      const nicExists = await User.findOne({ nic });
+      if (nicExists && nicExists._id.toString() !== user._id.toString()) {
+        return res.status(400).json({ message: 'NIC number already in use by another account.' });
+      }
+      user.nic = nic;
+    }
+
+    // Update other fields
     user.name = name || user.name;
     user.mobile = mobile || user.mobile;
     user.department = department || user.department;
+
+    if (isAdmin) {
+      user.role = role || user.role;
+      user.indexNumber = indexNumber || user.indexNumber;
+    }
 
     if (profilePictureData) {
       user.profilePicture = profilePictureData;

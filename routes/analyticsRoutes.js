@@ -3,6 +3,7 @@ import {
     getActivityDashboard,
     getSystemHealth,
     getUsageStatistics,
+    getRequestAnalytics,
     getBottleneckAnalytics,
 } from '../controllers/analyticsController.js';
 import { protect, admin } from '../middleware/authMiddleware.js';

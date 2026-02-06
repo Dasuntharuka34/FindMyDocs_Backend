@@ -37,23 +37,27 @@ const generateReport = async (req, res) => {
 
     switch (reportType) {
       case 'all':
-        const formSubmissions = await FormSubmission.find(hasDateFilter ? { createdAt: dateFilter } : {}).populate('user', 'name regNumber');
-        const leaveRequests = await LeaveRequest.find(hasDateFilter ? { createdAt: dateFilter } : {}).populate('user', 'name regNumber');
-        const excuseRequests = await ExcuseRequest.find(hasDateFilter ? { createdAt: dateFilter } : {}).populate('user', 'name regNumber');
+        // FormSubmission uses 'submittedAt'
+        const formSubmissions = await FormSubmission.find(hasDateFilter ? { submittedAt: dateFilter } : {}).populate('submittedBy', 'name indexNumber');
+        // LeaveRequest uses 'submittedAt'
+        const leaveRequests = await LeaveRequest.find(hasDateFilter ? { submittedAt: dateFilter } : {});
+        // ExcuseRequest uses 'submittedDate'
+        const excuseRequests = await ExcuseRequest.find(hasDateFilter ? { submittedDate: dateFilter } : {});
         data = { formSubmissions, leaveRequests, excuseRequests };
         break;
       case 'users':
+        // User has timestamps, so createdAt exists
         const users = await User.find(hasDateFilter ? { createdAt: dateFilter } : {}).select('-password');
         data = { users };
         break;
       case 'formSubmissions':
-        data = await FormSubmission.find(hasDateFilter ? { createdAt: dateFilter } : {}).populate('user', 'name regNumber');
+        data = await FormSubmission.find(hasDateFilter ? { submittedAt: dateFilter } : {}).populate('submittedBy', 'name indexNumber');
         break;
       case 'leaveRequests':
-        data = await LeaveRequest.find(hasDateFilter ? { createdAt: dateFilter } : {}).populate('user', 'name regNumber');
+        data = await LeaveRequest.find(hasDateFilter ? { submittedAt: dateFilter } : {});
         break;
       case 'excuseRequests':
-        data = await ExcuseRequest.find(hasDateFilter ? { createdAt: dateFilter } : {}).populate('user', 'name regNumber');
+        data = await ExcuseRequest.find(hasDateFilter ? { submittedDate: dateFilter } : {});
         break;
       default:
         return res.status(400).json({ message: 'Invalid report type' });

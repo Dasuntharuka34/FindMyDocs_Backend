@@ -5,22 +5,22 @@ import { uploadToBlob } from '../config/vercelBlob.js';
 // --- APPROVAL STAGE DEFINITIONS (MUST BE CONSISTENT WITH FRONTEND) ---
 const approvalStages = [
     { name: "Submitted", approverRole: null },
-//   { name: "Pending Staff Approval", approverRole: "Staff" },      // Index 1 (Next stage after student submission, or initial for Staff submitter if they approve their own?)
-  { name: "Pending Lecturer Approval", approverRole: "Lecturer" }, // Index 2
-  { name: "Pending HOD Approval", approverRole: "HOD" },    // Index 3
-  { name: "Pending Dean Approval", approverRole: "Dean" },    // Index 4
-  { name: "Pending VC Approval", approverRole: "VC" },      // Index 5
-  { name: "Approved", approverRole: null }               // Index 6 (Final Approved state)
+    //   { name: "Pending Staff Approval", approverRole: "Staff" },      // Index 1 (Next stage after student submission, or initial for Staff submitter if they approve their own?)
+    { name: "Pending Lecturer Approval", approverRole: "Lecturer" }, // Index 2
+    { name: "Pending HOD Approval", approverRole: "HOD" },    // Index 3
+    { name: "Pending Dean Approval", approverRole: "Dean" },    // Index 4
+    { name: "Pending VC Approval", approverRole: "VC" },      // Index 5
+    { name: "Approved", approverRole: null }               // Index 6 (Final Approved state)
 ];
 
 // Maps submitter roles to the initial stage index for a new letter.
 const submitterRoleToInitialStageIndex = {
-  "Student": 1,    // Student submits, starts at "Submitted" (needs Staff Approval next, which is index 1)
-//   "Staff": 2,      // FIXED: Staff submits, skips "Submitted" and "Pending Staff Approval", starts at "Pending Lecturer Approval" (index 2)
-  "Lecturer": 2,   // Lecturer submits, skips Staff, Lecturer, starts at "Pending HOD Approval" (index 3)
-  "HOD": 3,        // HOD submits, skips Staff, Lecturer, HOD, starts at "Pending Dean Approval" (index 4)
-  "Dean": 4,       // Dean submits, skips Staff, Lecturer, HOD, Dean, starts at "Pending VC Approval" (index 5)
-  "VC": 5         // VC submits, directly goes to "Approved" (index 6)
+    "Student": 1,    // Student submits, starts at "Submitted" (needs Staff Approval next, which is index 1)
+    //   "Staff": 2,      // FIXED: Staff submits, skips "Submitted" and "Pending Staff Approval", starts at "Pending Lecturer Approval" (index 2)
+    "Lecturer": 2,   // Lecturer submits, skips Staff, Lecturer, starts at "Pending HOD Approval" (index 3)
+    "HOD": 3,        // HOD submits, skips Staff, Lecturer, HOD, starts at "Pending Dean Approval" (index 4)
+    "Dean": 4,       // Dean submits, skips Staff, Lecturer, HOD, Dean, starts at "Pending VC Approval" (index 5)
+    "VC": 5         // VC submits, directly goes to "Approved" (index 6)
 };
 
 
@@ -38,23 +38,23 @@ const createLetter = async (req, res) => {
     // Handle file attachment - upload to Vercel Blob if file is uploaded
     let attachmentData = null;
     if (req.file) {
-      try {
-        // Generate a unique filename to prevent collisions
-        const filename = `${Date.now()}-${req.file.originalname}`;
-        const blobUrl = await uploadToBlob(req.file.buffer, filename, {
-          contentType: req.file.mimetype,
-          addRandomSuffix: false // We are already generating a unique filename
-        });
-        attachmentData = blobUrl; // Store the URL returned by Vercel Blob
-      } catch (uploadError) {
-        console.error("Error uploading file to Vercel Blob:", uploadError);
-        return res.status(500).json({ message: 'Failed to upload attachment', error: uploadError.message });
-      }
+        try {
+            // Generate a unique filename to prevent collisions
+            const filename = `${Date.now()}-${req.file.originalname}`;
+            const blobUrl = await uploadToBlob(req.file.buffer, filename, {
+                contentType: req.file.mimetype,
+                addRandomSuffix: false // We are already generating a unique filename
+            });
+            attachmentData = blobUrl; // Store the URL returned by Vercel Blob
+        } catch (uploadError) {
+            console.error("Error uploading file to Vercel Blob:", uploadError);
+            return res.status(500).json({ message: 'Failed to upload attachment', error: uploadError.message });
+        }
     }
 
     const initialStageIndex = submitterRoleToInitialStageIndex[submitterRole] !== undefined
-                               ? submitterRoleToInitialStageIndex[submitterRole]
-                               : 0;
+        ? submitterRoleToInitialStageIndex[submitterRole]
+        : 0;
     const initialStatus = approvalStages[initialStageIndex].name;
     const firstApproverRole = approvalStages[initialStageIndex].approverRole;
 

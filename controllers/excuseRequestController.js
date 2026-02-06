@@ -243,23 +243,23 @@ const approveExcuseRequest = async (req, res) => {
     }
 
     if (approverRole === 'Dean') {
-        // Dean is approving, so set status to "Approved"
-        request.currentStageIndex = approvalStages.findIndex(stage => stage.name === 'Approved');
-        request.status = 'Approved';
+      // Dean is approving, so set status to "Approved"
+      request.currentStageIndex = approvalStages.findIndex(stage => stage.name === 'Approved');
+      request.status = 'Approved';
     } else {
-        // Not the Dean, so proceed to the next stage
-        const nextStageIndex = request.currentStageIndex + 1;
-        const nextStage = approvalStages[nextStageIndex];
-        request.currentStageIndex = nextStageIndex;
-        request.status = nextStage.name;
+      // Not the Dean, so proceed to the next stage
+      const nextStageIndex = request.currentStageIndex + 1;
+      const nextStage = approvalStages[nextStageIndex];
+      request.currentStageIndex = nextStageIndex;
+      request.status = nextStage.name;
 
-        // Add new pending approval for the next stage
-        if (nextStage.approverRole) {
-            request.approvals.push({
-                approverRole: nextStage.approverRole,
-                status: 'pending'
-            });
-        }
+      // Add new pending approval for the next stage
+      if (nextStage.approverRole) {
+        request.approvals.push({
+          approverRole: nextStage.approverRole,
+          status: 'pending'
+        });
+      }
     }
     request.lastUpdated = new Date();
 
@@ -375,5 +375,5 @@ const deleteExcuseRequest = async (req, res) => {
 };
 
 export {
-    approveExcuseRequest, createExcuseRequest, deleteExcuseRequest, getExcuseRequestById, getExcuseRequests, getExcuseRequestsByUserId, getPendingExcuseApprovals, rejectExcuseRequest
+  approveExcuseRequest, createExcuseRequest, deleteExcuseRequest, getExcuseRequestById, getExcuseRequests, getExcuseRequestsByUserId, getPendingExcuseApprovals, rejectExcuseRequest
 };

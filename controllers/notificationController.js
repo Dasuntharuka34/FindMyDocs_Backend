@@ -15,7 +15,12 @@ const createAndSendNotification = async ({ userId, message, type }) => {
   // Fetch user to get email for sending notification
   const user = await User.findById(userId);
   if (user && user.email) {
-    await sendNotificationEmail(user.email, message);
+    try {
+      await sendNotificationEmail(user.email, message);
+    } catch (emailError) {
+      console.warn('Failed to send notification email:', emailError.message);
+      // Continue execution even if email fails
+    }
   }
   return createdNotification;
 };

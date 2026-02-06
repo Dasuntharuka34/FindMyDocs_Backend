@@ -504,7 +504,9 @@ const deleteUser = async (req, res) => {
 // @access  Private/Admin
 const resetUserPassword = async (req, res) => {
   const { id } = req.params; // User ID
-  const defaultPassword = 'password123'; // Define your default password here
+  const SystemConfig = (await import('../models/SystemConfig.js')).default;
+  const defaultPasswordConfig = await SystemConfig.findOne({ key: 'DEFAULT_PASSWORD' });
+  const defaultPassword = defaultPasswordConfig?.value;
 
   try {
     const user = await User.findById(id);
@@ -736,7 +738,7 @@ const bulkResetPasswords = async (req, res) => {
     // Get default password from system config
     const SystemConfig = (await import('../models/SystemConfig.js')).default;
     const defaultPasswordConfig = await SystemConfig.findOne({ key: 'DEFAULT_PASSWORD' });
-    const defaultPassword = defaultPasswordConfig?.value || 'password123';
+    const defaultPassword = defaultPasswordConfig?.value;
 
     const passwordToSet = newPassword || defaultPassword;
 

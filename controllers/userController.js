@@ -727,13 +727,19 @@ const bulkDeleteUsers = async (req, res) => {
 // @access  Private/Admin
 const bulkResetPasswords = async (req, res) => {
   const { userIds, newPassword } = req.body;
-  const passwordToSet = newPassword || 'password123';
 
   if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
     return res.status(400).json({ message: 'No users selected' });
   }
 
   try {
+    // Get default password from system config
+    const SystemConfig = (await import('../models/SystemConfig.js')).default;
+    const defaultPasswordConfig = await SystemConfig.findOne({ key: 'DEFAULT_PASSWORD' });
+    const defaultPassword = defaultPasswordConfig?.value || 'password123';
+
+    const passwordToSet = newPassword || defaultPassword;
+
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(passwordToSet, salt);
 
@@ -754,7 +760,10 @@ const bulkResetPasswords = async (req, res) => {
       req
     );
 
-    res.json({ message: `Successfully reset passwords for ${result.modifiedCount} users` });
+    res.json({
+      message: `Successfully reset passwords for ${result.modifiedCount} users`,
+      count: result.modifiedCount
+    });
   } catch (error) {
     console.error('Error in bulk password reset:', error);
     res.status(500).json({ message: 'Error resetting passwords', error: error.message });

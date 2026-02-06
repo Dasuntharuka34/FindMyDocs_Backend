@@ -10,10 +10,10 @@ import { evaluateAutoApproval } from '../utils/autoApprovalEngine.js';
 
 // Maps student role to initial stage index (fallback logic)
 const submitterRoleToInitialStageIndex = {
-  "Student": 0,
-  "Lecturer": 1,
+  "STUDENT": 0,
+  "LECTURER": 1,
   "HOD": 2,
-  "Dean": 3,
+  "DEAN": 3,
 };
 
 // --- CREATE EXCUSE REQUEST ---
@@ -86,7 +86,7 @@ const createExcuseRequest = async (req, res) => {
     ];
 
     // Determine initial stage based on the submitter's role (case-insensitive)
-    const normalizedRole = studentRole.charAt(0).toUpperCase() + studentRole.slice(1).toLowerCase();
+    const normalizedRole = studentRole?.toUpperCase() || "STUDENT";
     const initialStageIndex = submitterRoleToInitialStageIndex[normalizedRole] ?? (stages.length > 2 ? 1 : 0);
     const initialStatus = stages[initialStageIndex].name;
     const firstApproverRole = stages[initialStageIndex].approverRole;

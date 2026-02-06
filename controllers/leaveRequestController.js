@@ -7,10 +7,10 @@ import { createAndSendNotification } from './notificationController.js';
 import { evaluateAutoApproval } from '../utils/autoApprovalEngine.js';
 
 const submitterRoleToInitialStageIndex = {
-  "Student": 0,
-  "Lecturer": 1,
+  "STUDENT": 0,
+  "LECTURER": 1,
   "HOD": 2,
-  "Dean": 3,
+  "DEAN": 3,
 };
 
 // @desc    Create a new leave request
@@ -89,7 +89,7 @@ const createLeaveRequest = async (req, res) => {
     ];
 
     // Determine initial stage based on the submitter's role (case-insensitive)
-    const normalizedRole = requesterRole.charAt(0).toUpperCase() + requesterRole.slice(1).toLowerCase();
+    const normalizedRole = requesterRole?.toUpperCase() || "STUDENT";
     const initialStageIndex = submitterRoleToInitialStageIndex[normalizedRole] ?? (stages.length > 2 ? 1 : 0);
 
     const stage = stages[initialStageIndex];

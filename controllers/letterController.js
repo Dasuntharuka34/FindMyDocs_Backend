@@ -5,10 +5,10 @@ import { uploadToBlob } from '../config/vercelBlob.js';
 
 // Maps submitter roles to the initial stage index (fallback logic)
 const submitterRoleToInitialStageIndex = {
-    "Student": 0,
-    "Lecturer": 1,
+    "STUDENT": 0,
+    "LECTURER": 1,
     "HOD": 2,
-    "Dean": 3,
+    "DEAN": 3,
     "VC": 4
 };
 
@@ -50,7 +50,7 @@ const createLetter = async (req, res) => {
     ];
 
     // Determine initial stage based on the submitter's role (case-insensitive)
-    const normalizedRole = submitterRole ? (submitterRole.charAt(0).toUpperCase() + submitterRole.slice(1).toLowerCase()) : "Student";
+    const normalizedRole = submitterRole?.toUpperCase() || "STUDENT";
     const initialStageIndex = submitterRoleToInitialStageIndex[normalizedRole] ?? (stages.length > 2 ? 1 : 0);
     const initialStatus = stages[initialStageIndex].name;
     const firstApproverRole = stages[initialStageIndex].approverRole;

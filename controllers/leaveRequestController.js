@@ -2,26 +2,16 @@ import { uploadToBlob } from '../config/vercelBlob.js';
 import LeaveRequest from '../models/LeaveRequest.js';
 import Notification from '../models/Notification.js';
 import User from '../models/User.js';
+import Workflow from '../models/Workflow.js';
 import { createAndSendNotification } from './notificationController.js';
 import { evaluateAutoApproval } from '../utils/autoApprovalEngine.js';
 
-// --- APPROVAL STAGE DEFINITIONS (ඉල්ලීම් අනුමත කිරීමේ අදියරයන්) ---
-const approvalStages = [
-  { name: "Submitted", approverRole: null },
-  { name: "Pending Lecturer Approval", approverRole: "Lecturer" },
-  { name: "Pending HOD Approval", approverRole: "HOD" },
-  { name: "Pending Dean Approval", approverRole: "Dean" },
-  { name: "Pending VC Approval", approverRole: "VC" },
-  { name: "Approved", approverRole: null }
-];
-
 const submitterRoleToInitialStageIndex = {
   "Student": 1,
-  "Lecturer": 2, // Lecturer submits, skips Staff, starts at "Pending Lecturer Approval"
-  "HOD": 3,      // HOD submits, skips Staff, Lecturer, starts at "Pending HOD Approval"
+  "Lecturer": 2,
+  "HOD": 3,
   "Dean": 4,
 };
-// --- END APPROVAL STAGE DEFINITIONS ---
 
 // @desc    Create a new leave request
 // @route   POST /api/leaverequests
@@ -90,15 +80,28 @@ const createLeaveRequest = async (req, res) => {
       }
     }
 
+    // Fetch dynamic workflow
+    const workflow = await Workflow.findOne({ requestType: 'Leave', isActive: true });
+    const stages = workflow ? workflow.steps : [
+      { name: "Submitted", approverRole: null },
+      { name: "Pending Lecturer Approval", approverRole: "Lecturer" },
+      { name: "Pending HOD Approval", approverRole: "HOD" },
+      { name: "Pending Dean Approval", approverRole: "Dean" },
+      { name: "Approved", approverRole: null }
+    ];
+
     // Determine initial stage based on the submitter's role (case-insensitive)
     const normalizedRole = requesterRole.charAt(0).toUpperCase() + requesterRole.slice(1).toLowerCase();
-    const initialStageIndex = submitterRoleToInitialStageIndex[normalizedRole] ?? 1; // Default to Student stage (1)
+    const initialStageIndex = submitterRoleToInitialStageIndex[normalizedRole] ?? (stages.length > 2 ? 1 : 0);
 
-    const stage = approvalStages[initialStageIndex];
+    const stage = stages[initialStageIndex];
+    if (!stage) {
+      return res.status(500).json({ message: 'Internal server error: Invalid approval stage index' });
+    }
     const initialStatus = stage.name;
     const firstApproverRole = stage.approverRole;
 
-    if (!firstApproverRole && initialStageIndex < approvalStages.length - 1) {
+    if (!firstApproverRole && initialStageIndex < stages.length - 1) {
       console.error('Invalid stage configuration: firstApproverRole is null for active stage', initialStatus);
       return res.status(500).json({ message: 'Internal server error: Invalid approval stage configuration' });
     }
@@ -128,7 +131,7 @@ const createLeaveRequest = async (req, res) => {
 
     if (shouldAutoApprove) {
       newRequest.status = 'Approved';
-      newRequest.currentStageIndex = approvalStages.length - 1;
+      newRequest.currentStageIndex = stages.length - 1;
       newRequest.approvals.push({
         approverRole: 'System',
         approverName: 'Auto Approval System',
@@ -196,6 +199,16 @@ const createLeaveRequest = async (req, res) => {
 const getPendingLeaveRequests = async (req, res) => {
   try {
     const { status } = req.params;
+
+    // Fetch dynamic workflow (optional validation)
+    const workflow = await Workflow.findOne({ requestType: 'Leave', isActive: true });
+    const stages = workflow ? workflow.steps : [];
+    const validStatuses = stages.map(s => s.name);
+
+    if (stages.length > 0 && !validStatuses.includes(status)) {
+      return res.status(400).json({ message: 'Invalid status for leave requests' });
+    }
+
     const requests = await LeaveRequest.find({ status: status });
     res.status(200).json(requests);
   } catch (error) {
@@ -273,8 +286,12 @@ const approveLeaveRequest = async (req, res) => {
       return res.status(404).json({ message: 'Leave request not found.' });
     }
 
-    const nextExpectedApprover = approvalStages[request.currentStageIndex].approverRole;
-    if (req.user.role !== nextExpectedApprover) {
+    const workflow = await Workflow.findOne({ requestType: 'Leave', isActive: true });
+    if (!workflow) return res.status(500).json({ message: 'System workflow not found.' });
+    const stages = workflow.steps;
+
+    const currentStage = stages[request.currentStageIndex];
+    if (!currentStage || req.user.role !== currentStage.approverRole) {
       return res.status(403).json({ message: 'You are not authorized to approve this request at this stage.' });
     }
 
@@ -285,10 +302,16 @@ const approveLeaveRequest = async (req, res) => {
     }
 
     const nextStageIndex = request.currentStageIndex + 1;
-    const nextStage = approvalStages[nextStageIndex];
+    let nextStage;
+
+    if (nextStageIndex >= stages.length - 1 || stages[nextStageIndex].name === 'Approved') {
+      nextStage = stages[stages.length - 1];
+    } else {
+      nextStage = stages[nextStageIndex];
+    }
 
     // Update the pending approval
-    const approverRole = approvalStages[request.currentStageIndex].approverRole;
+    const approverRole = stages[request.currentStageIndex].approverRole;
     const currentApproval = request.approvals.find(a => a.status === 'pending' && a.approverRole === approverRole);
     if (currentApproval) {
       currentApproval.status = 'approved';
@@ -298,7 +321,7 @@ const approveLeaveRequest = async (req, res) => {
       currentApproval.comment = comment || '';
     }
 
-    request.currentStageIndex = nextStageIndex;
+    request.currentStageIndex = nextStageIndex >= stages.length ? stages.length - 1 : nextStageIndex;
     request.status = nextStage.name;
 
     // Add new pending approval for the next stage
@@ -360,8 +383,11 @@ const rejectLeaveRequest = async (req, res) => {
       return res.status(404).json({ message: 'Leave request not found.' });
     }
 
-    const nextExpectedApprover = approvalStages[request.currentStageIndex].approverRole;
-    if (req.user.role !== nextExpectedApprover) {
+    const workflow = await Workflow.findOne({ requestType: 'Leave', isActive: true });
+    const stages = workflow ? workflow.steps : [];
+
+    const currentStage = stages[request.currentStageIndex];
+    if (!currentStage || req.user.role !== currentStage.approverRole) {
       return res.status(403).json({ message: 'You are not authorized to reject this request at this stage.' });
     }
 
@@ -448,15 +474,19 @@ const bulkApproveLeaveRequests = async (req, res) => {
           continue;
         }
 
-        const nextExpectedApprover = approvalStages[request.currentStageIndex].approverRole;
-        if (req.user.role !== nextExpectedApprover) {
+        // Fetch dynamic workflow
+        const workflow = await Workflow.findOne({ requestType: 'Leave', isActive: true });
+        const stages = workflow ? workflow.steps : [];
+
+        const currentStage = stages[request.currentStageIndex];
+        if (!currentStage || req.user.role !== currentStage.approverRole) {
           failureCount++;
           errors.push(`Not authorized for request ${id}`);
           continue;
         }
 
         // Approval Logic
-        const approverRole = approvalStages[request.currentStageIndex].approverRole;
+        const approverRole = currentStage.approverRole;
         const currentApproval = request.approvals.find(a => a.status === 'pending' && a.approverRole === approverRole);
 
         if (currentApproval) {
@@ -473,7 +503,7 @@ const bulkApproveLeaveRequests = async (req, res) => {
 
         if (shouldAutoApprove) {
           request.status = 'Approved';
-          request.currentStageIndex = approvalStages.length - 1; // Last stage (Approved)
+          request.currentStageIndex = stages.length - 1; // Last stage (Approved)
           request.approvals.push({
             approverRole: 'System', // Indicate system auto-approval
             approverName: 'Auto Approval System',
@@ -491,8 +521,8 @@ const bulkApproveLeaveRequests = async (req, res) => {
 
         } else {
           const nextStageIndex = request.currentStageIndex + 1;
-          const nextStage = approvalStages[nextStageIndex];
-          request.currentStageIndex = nextStageIndex;
+          const nextStage = stages[nextStageIndex] || stages[stages.length - 1];
+          request.currentStageIndex = nextStageIndex >= stages.length ? stages.length - 1 : nextStageIndex;
           request.status = nextStage.name;
 
           if (nextStage.approverRole) {
@@ -581,15 +611,18 @@ const bulkRejectLeaveRequests = async (req, res) => {
           continue;
         }
 
-        const nextExpectedApprover = approvalStages[request.currentStageIndex].approverRole;
-        if (req.user.role !== nextExpectedApprover) {
+        const workflow = await Workflow.findOne({ requestType: 'Leave', isActive: true });
+        const stages = workflow ? workflow.steps : [];
+
+        const currentStage = stages[request.currentStageIndex];
+        if (!currentStage || req.user.role !== currentStage.approverRole) {
           failureCount++;
           errors.push(`Not authorized for request ${id}`);
           continue;
         }
 
         // Reject Logic
-        const approverRole = approvalStages[request.currentStageIndex].approverRole;
+        const approverRole = currentStage.approverRole;
         request.status = 'Rejected';
         request.approvals.push({
           approverRole: approverRole,

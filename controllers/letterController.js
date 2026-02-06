@@ -1,26 +1,15 @@
 import Letter from '../models/Letter.js';
 import User from '../models/User.js';
+import Workflow from '../models/Workflow.js';
 import { uploadToBlob } from '../config/vercelBlob.js';
 
-// --- APPROVAL STAGE DEFINITIONS (MUST BE CONSISTENT WITH FRONTEND) ---
-const approvalStages = [
-    { name: "Submitted", approverRole: null },
-    //   { name: "Pending Staff Approval", approverRole: "Staff" },      // Index 1 (Next stage after student submission, or initial for Staff submitter if they approve their own?)
-    { name: "Pending Lecturer Approval", approverRole: "Lecturer" }, // Index 2
-    { name: "Pending HOD Approval", approverRole: "HOD" },    // Index 3
-    { name: "Pending Dean Approval", approverRole: "Dean" },    // Index 4
-    { name: "Pending VC Approval", approverRole: "VC" },      // Index 5
-    { name: "Approved", approverRole: null }               // Index 6 (Final Approved state)
-];
-
-// Maps submitter roles to the initial stage index for a new letter.
+// Maps submitter roles to the initial stage index (fallback logic)
 const submitterRoleToInitialStageIndex = {
-    "Student": 1,    // Student submits, starts at "Submitted" (needs Staff Approval next, which is index 1)
-    //   "Staff": 2,      // FIXED: Staff submits, skips "Submitted" and "Pending Staff Approval", starts at "Pending Lecturer Approval" (index 2)
-    "Lecturer": 2,   // Lecturer submits, skips Staff, Lecturer, starts at "Pending HOD Approval" (index 3)
-    "HOD": 3,        // HOD submits, skips Staff, Lecturer, HOD, starts at "Pending Dean Approval" (index 4)
-    "Dean": 4,       // Dean submits, skips Staff, Lecturer, HOD, Dean, starts at "Pending VC Approval" (index 5)
-    "VC": 5         // VC submits, directly goes to "Approved" (index 6)
+    "Student": 1,
+    "Lecturer": 2,
+    "HOD": 3,
+    "Dean": 4,
+    "VC": 5
 };
 
 
@@ -52,11 +41,21 @@ const createLetter = async (req, res) => {
         }
     }
 
+    // Fetch dynamic workflow
+    const workflow = await Workflow.findOne({ requestType: 'Letter', isActive: true });
+    const stages = workflow ? workflow.steps : [
+        { name: "Submitted", approverRole: null },
+        { name: "Pending Lecturer Approval", approverRole: "Lecturer" },
+        { name: "Pending HOD Approval", approverRole: "HOD" },
+        { name: "Pending Dean Approval", approverRole: "Dean" },
+        { name: "Approved", approverRole: null }
+    ];
+
     const initialStageIndex = submitterRoleToInitialStageIndex[submitterRole] !== undefined
         ? submitterRoleToInitialStageIndex[submitterRole]
-        : 0;
-    const initialStatus = approvalStages[initialStageIndex].name;
-    const firstApproverRole = approvalStages[initialStageIndex].approverRole;
+        : (stages.length > 2 ? 1 : 0);
+    const initialStatus = stages[initialStageIndex].name;
+    const firstApproverRole = stages[initialStageIndex].approverRole;
 
     try {
         const newLetter = new Letter({
@@ -140,7 +139,9 @@ const getLetterById = async (req, res) => {
             const isAdmin = req.user.role.toLowerCase() === 'admin';
             const isOwner = req.user._id.toString() === letter.studentId.toString();
 
-            const currentApprovalStage = approvalStages[letter.currentStageIndex];
+            const workflow = await Workflow.findOne({ requestType: 'Letter', isActive: true });
+            const stages = workflow ? workflow.steps : [];
+            const currentApprovalStage = stages[letter.currentStageIndex];
             const isCurrentApprover = currentApprovalStage && currentApprovalStage.approverRole === req.user.role;
 
             const hasPreviouslyInteracted = letter.approvals.some(
@@ -167,12 +168,14 @@ const getLetterById = async (req, res) => {
 const getPendingApprovals = async (req, res) => {
     const { statusName } = req.params;
 
-    const isValidStatus = approvalStages.some(stage => stage.name === statusName);
-    if (!isValidStatus) {
-        return res.status(400).json({ message: 'Invalid status name provided for pending approvals.' });
-    }
-
     try {
+        const workflow = await Workflow.findOne({ requestType: 'Letter', isActive: true });
+        const stages = workflow ? workflow.steps : [];
+        const isValidStatus = stages.some(stage => stage.name === statusName);
+
+        if (stages.length > 0 && !isValidStatus) {
+            return res.status(400).json({ message: 'Invalid status name provided for pending approvals.' });
+        }
         const letters = await Letter.find({ status: statusName });
         res.json(letters);
     } catch (error) {
@@ -201,7 +204,11 @@ const updateLetterStatus = async (req, res) => {
             return res.status(404).json({ message: 'Approver user not found.' });
         }
 
-        const currentStage = approvalStages[letter.currentStageIndex];
+        const workflow = await Workflow.findOne({ requestType: 'Letter', isActive: true });
+        if (!workflow) return res.status(500).json({ message: 'System workflow not found.' });
+        const stages = workflow.steps;
+
+        const currentStage = stages[letter.currentStageIndex];
         if (req.user.role !== currentStage.approverRole) {
             return res.status(403).json({ message: 'Not authorized to update the status of this letter at this stage.' });
         }
@@ -218,8 +225,8 @@ const updateLetterStatus = async (req, res) => {
             }
 
             const nextStageIndex = letter.currentStageIndex + 1;
-            const nextStage = approvalStages[nextStageIndex];
-            letter.currentStageIndex = nextStageIndex;
+            const nextStage = stages[nextStageIndex] || stages[stages.length - 1];
+            letter.currentStageIndex = nextStageIndex >= stages.length ? stages.length - 1 : nextStageIndex;
             letter.status = nextStage.name;
 
             if (nextStage.approverRole) {
@@ -278,7 +285,10 @@ const bulkApproveLetters = async (req, res) => {
                     continue;
                 }
 
-                const currentStage = approvalStages[letter.currentStageIndex];
+                const workflow = await Workflow.findOne({ requestType: 'Letter', isActive: true });
+                const stages = workflow ? workflow.steps : [];
+
+                const currentStage = stages[letter.currentStageIndex];
                 if (req.user.role !== currentStage.approverRole) {
                     failureCount++;
                     errors.push(`Not authorized for letter ${id}`);
@@ -296,8 +306,8 @@ const bulkApproveLetters = async (req, res) => {
                 }
 
                 const nextStageIndex = letter.currentStageIndex + 1;
-                const nextStage = approvalStages[nextStageIndex];
-                letter.currentStageIndex = nextStageIndex;
+                const nextStage = stages[nextStageIndex] || stages[stages.length - 1];
+                letter.currentStageIndex = nextStageIndex >= stages.length ? stages.length - 1 : nextStageIndex;
                 letter.status = nextStage.name;
 
                 if (nextStage.approverRole) {
@@ -356,7 +366,10 @@ const bulkRejectLetters = async (req, res) => {
                     continue;
                 }
 
-                const currentStage = approvalStages[letter.currentStageIndex];
+                const workflow = await Workflow.findOne({ requestType: 'Letter', isActive: true });
+                const stages = workflow ? workflow.steps : [];
+
+                const currentStage = stages[letter.currentStageIndex];
                 if (req.user.role !== currentStage.approverRole) {
                     failureCount++;
                     errors.push(`Not authorized for letter ${id}`);

@@ -3,25 +3,16 @@
 import ExcuseRequest from '../models/ExcuseRequest.js';
 import Notification from '../models/Notification.js';
 import User from '../models/User.js';
+import Workflow from '../models/Workflow.js';
 import { put, del } from '@vercel/blob';
 import { createAndSendNotification } from './notificationController.js';
 import { evaluateAutoApproval } from '../utils/autoApprovalEngine.js';
 
-// --- APPROVAL STAGE DEFINITIONS ---
-const approvalStages = [
-  { name: "Submitted", approverRole: null },
-  { name: "Pending Lecturer Approval", approverRole: "Lecturer" },
-  { name: "Pending HOD Approval", approverRole: "HOD" },
-  { name: "Pending Dean Approval", approverRole: "Dean" },
-  { name: "Pending VC Approval", approverRole: "VC" },
-  { name: "Approved", approverRole: null }
-];
-
-// Maps student role to initial stage index
+// Maps student role to initial stage index (fallback logic)
 const submitterRoleToInitialStageIndex = {
   "Student": 1,
-  "Lecturer": 2,   // Lecturer submits, skips Staff, starts at "Pending Lecturer Approval"
-  "HOD": 3,        // HOD submits, skips Staff, Lecturer, starts at "Pending HOD Approval"
+  "Lecturer": 2,
+  "HOD": 3,
   "Dean": 4,
 };
 
@@ -86,9 +77,19 @@ const createExcuseRequest = async (req, res) => {
       }
     }
 
-    const initialStageIndex = submitterRoleToInitialStageIndex[studentRole] || 1;
-    const initialStatus = approvalStages[initialStageIndex].name;
-    const firstApproverRole = approvalStages[initialStageIndex].approverRole;
+    // Fetch dynamic workflow
+    const workflow = await Workflow.findOne({ requestType: 'Excuse', isActive: true });
+    const stages = workflow ? workflow.steps : [
+      { name: "Submitted", approverRole: null },
+      { name: "Pending Lecturer Approval", approverRole: "Lecturer" },
+      { name: "Pending HOD Approval", approverRole: "HOD" },
+      { name: "Pending Dean Approval", approverRole: "Dean" },
+      { name: "Approved", approverRole: null }
+    ];
+
+    const initialStageIndex = submitterRoleToInitialStageIndex[studentRole] || (stages.length > 2 ? 1 : 0);
+    const initialStatus = stages[initialStageIndex].name;
+    const firstApproverRole = stages[initialStageIndex].approverRole;
 
     const newRequest = new ExcuseRequest({
       studentId,
@@ -114,47 +115,47 @@ const createExcuseRequest = async (req, res) => {
     const shouldAutoApprove = await evaluateAutoApproval({ ...req.body }, 'Excuse');
 
     if (shouldAutoApprove) {
-        newRequest.status = 'Approved';
-        newRequest.currentStageIndex = approvalStages.length - 1;
-        newRequest.approvals.push({
-            approverRole: 'System',
-            approverName: 'Auto Approval System',
-            status: 'approved',
-            approvedAt: new Date(),
-            comment: 'Auto-approved based on active rules.'
-        });
-        
-         // Notify student immediately
-        createAndSendNotification({
-            userId: req.user._id,
-            message: 'Your excuse request has been Auto-Approved based on system rules.',
-            type: 'success',
-        }).catch(e => console.error(e));
+      newRequest.status = 'Approved';
+      newRequest.currentStageIndex = stages.length - 1;
+      newRequest.approvals.push({
+        approverRole: 'System',
+        approverName: 'Auto Approval System',
+        status: 'approved',
+        approvedAt: new Date(),
+        comment: 'Auto-approved based on active rules.'
+      });
+
+      // Notify student immediately
+      createAndSendNotification({
+        userId: req.user._id,
+        message: 'Your excuse request has been Auto-Approved based on system rules.',
+        type: 'success',
+      }).catch(e => console.error(e));
 
     } else {
-        newRequest.approvals.push({
-            approverRole: firstApproverRole,
-            status: 'pending'
-        });
+      newRequest.approvals.push({
+        approverRole: firstApproverRole,
+        status: 'pending'
+      });
 
-        // Notify requester
-        await createAndSendNotification({
-            userId: studentId,
-            message: `Your excuse request has been submitted. Status: ${initialStatus}.`,
+      // Notify requester
+      await createAndSendNotification({
+        userId: studentId,
+        message: `Your excuse request has been submitted. Status: ${initialStatus}.`,
+        type: 'info',
+      });
+
+      // Notify first approver
+      if (firstApproverRole) {
+        const approvers = await User.find({ role: firstApproverRole });
+        for (const approver of approvers) {
+          await createAndSendNotification({
+            userId: approver._id,
+            message: `New excuse request from ${studentName} is awaiting your approval.`,
             type: 'info',
-        });
-
-        // Notify first approver
-        if (firstApproverRole) {
-            const approvers = await User.find({ role: firstApproverRole });
-            for (const approver of approvers) {
-                await createAndSendNotification({
-                    userId: approver._id,
-                    message: `New excuse request from ${studentName} is awaiting your approval.`,
-                    type: 'info',
-                });
-            }
+          });
         }
+      }
     }
 
     const createdRequest = await newRequest.save();
@@ -220,12 +221,16 @@ const getExcuseRequestsByUserId = async (req, res) => {
 const getPendingExcuseApprovals = async (req, res) => {
   const { statusName } = req.params;
 
-  const validStatuses = approvalStages.map(stage => stage.name);
-  if (!validStatuses.includes(statusName)) {
-    return res.status(400).json({ message: 'Invalid status name for pending approvals' });
-  }
-
   try {
+    const workflow = await Workflow.findOne({ requestType: 'Excuse', isActive: true });
+    const stages = workflow ? workflow.steps : [];
+    const validStatuses = stages.map(stage => stage.name);
+
+    // Check if it's a valid status for this request type
+    if (stages.length > 0 && !validStatuses.includes(statusName)) {
+      return res.status(400).json({ message: 'Invalid status name for pending approvals' });
+    }
+
     const requests = await ExcuseRequest.find({ status: statusName })
       .sort({ submittedDate: -1 }); // Sort by most recent first
     res.json(requests);
@@ -244,8 +249,13 @@ const approveExcuseRequest = async (req, res) => {
     const request = await ExcuseRequest.findById(id);
     if (!request) return res.status(404).json({ message: 'Excuse request not found.' });
 
-    const nextExpectedApprover = approvalStages[request.currentStageIndex].approverRole;
-    if (req.user.role !== nextExpectedApprover) {
+    // Fetch dynamic workflow
+    const workflow = await Workflow.findOne({ requestType: 'Excuse', isActive: true });
+    if (!workflow) return res.status(500).json({ message: 'System workflow not found.' });
+    const stages = workflow.steps;
+
+    const currentStage = stages[request.currentStageIndex];
+    if (!currentStage || req.user.role !== currentStage.approverRole) {
       return res.status(403).json({ message: 'Not authorized to approve at this stage.' });
     }
 
@@ -256,24 +266,22 @@ const approveExcuseRequest = async (req, res) => {
     }
 
     // Update the pending approval
-    const approverRole = approvalStages[request.currentStageIndex].approverRole;
+    const approverRole = stages[request.currentStageIndex].approverRole;
     const currentApproval = request.approvals.find(a => a.status === 'pending' && a.approverRole === approverRole);
     if (currentApproval) {
       currentApproval.status = 'approved';
       currentApproval.approvedAt = new Date();
       currentApproval.approverId = approverId;
-      currentApproval.approverName = approverUser.name; // Use the user's name from database
+      currentApproval.approverName = approverUser.name;
       currentApproval.comment = comment || '';
     }
 
-    if (approverRole === 'Dean') {
-      // Dean is approving, so set status to "Approved"
-      request.currentStageIndex = approvalStages.findIndex(stage => stage.name === 'Approved');
+    const nextStageIndex = request.currentStageIndex + 1;
+    if (nextStageIndex >= stages.length - 1 || stages[nextStageIndex].name === 'Approved') {
+      request.currentStageIndex = stages.length - 1;
       request.status = 'Approved';
     } else {
-      // Not the Dean, so proceed to the next stage
-      const nextStageIndex = request.currentStageIndex + 1;
-      const nextStage = approvalStages[nextStageIndex];
+      const nextStage = stages[nextStageIndex];
       request.currentStageIndex = nextStageIndex;
       request.status = nextStage.name;
 
@@ -297,7 +305,7 @@ const approveExcuseRequest = async (req, res) => {
     });
 
     // Notify next approver
-    const nextStage = approvalStages[request.currentStageIndex];
+    const nextStage = stages[request.currentStageIndex];
     if (nextStage.approverRole) {
       const nextApprovers = await User.find({ role: nextStage.approverRole });
       for (const approver of nextApprovers) {
@@ -331,8 +339,11 @@ const rejectExcuseRequest = async (req, res) => {
     const request = await ExcuseRequest.findById(id);
     if (!request) return res.status(404).json({ message: 'Excuse request not found.' });
 
-    const nextExpectedApprover = approvalStages[request.currentStageIndex].approverRole;
-    if (req.user.role !== nextExpectedApprover) {
+    const workflow = await Workflow.findOne({ requestType: 'Excuse', isActive: true });
+    const stages = workflow ? workflow.steps : [];
+
+    const currentStage = stages[request.currentStageIndex];
+    if (!currentStage || req.user.role !== currentStage.approverRole) {
       return res.status(403).json({ message: 'Not authorized to reject at this stage.' });
     }
 
@@ -343,7 +354,7 @@ const rejectExcuseRequest = async (req, res) => {
     }
 
     // Update the pending approval
-    const approverRole = approvalStages[request.currentStageIndex].approverRole;
+    const approverRole = stages[request.currentStageIndex].approverRole;
     const currentApproval = request.approvals.find(a => a.status === 'pending' && a.approverRole === approverRole);
     if (currentApproval) {
       currentApproval.status = 'rejected';
@@ -425,15 +436,19 @@ const bulkApproveExcuseRequests = async (req, res) => {
           continue;
         }
 
-        const nextExpectedApprover = approvalStages[request.currentStageIndex].approverRole;
-        if (req.user.role !== nextExpectedApprover) {
+        // Fetch dynamic workflow
+        const workflow = await Workflow.findOne({ requestType: 'Excuse', isActive: true });
+        const stages = workflow ? workflow.steps : [];
+
+        const currentStage = stages[request.currentStageIndex];
+        if (!currentStage || req.user.role !== currentStage.approverRole) {
           failureCount++;
           errors.push(`Not authorized for request ${id}`);
           continue;
         }
 
         // Approval Logic (same as single approve)
-        const approverRole = approvalStages[request.currentStageIndex].approverRole;
+        const approverRole = currentStage.approverRole;
         const currentApproval = request.approvals.find(a => a.status === 'pending' && a.approverRole === approverRole);
 
         if (currentApproval) {
@@ -446,11 +461,11 @@ const bulkApproveExcuseRequests = async (req, res) => {
 
         const nextStageIndex = request.currentStageIndex + 1;
 
-        if (approverRole === 'Dean') { // Final approval
-          request.currentStageIndex = approvalStages.findIndex(stage => stage.name === 'Approved');
+        if (nextStageIndex >= stages.length - 1 || stages[nextStageIndex].name === 'Approved') {
+          request.currentStageIndex = stages.length - 1;
           request.status = 'Approved';
         } else {
-          const nextStage = approvalStages[nextStageIndex];
+          const nextStage = stages[nextStageIndex];
           request.currentStageIndex = nextStageIndex;
           request.status = nextStage.name;
 
@@ -518,15 +533,18 @@ const bulkRejectExcuseRequests = async (req, res) => {
           continue;
         }
 
-        const nextExpectedApprover = approvalStages[request.currentStageIndex].approverRole;
-        if (req.user.role !== nextExpectedApprover) {
+        const workflow = await Workflow.findOne({ requestType: 'Excuse', isActive: true });
+        const stages = workflow ? workflow.steps : [];
+
+        const currentStage = stages[request.currentStageIndex];
+        if (!currentStage || req.user.role !== currentStage.approverRole) {
           failureCount++;
           errors.push(`Not authorized for request ${id}`);
           continue;
         }
 
         // Reject Logic
-        const approverRole = approvalStages[request.currentStageIndex].approverRole;
+        const approverRole = currentStage.approverRole;
         const currentApproval = request.approvals.find(a => a.status === 'pending' && a.approverRole === approverRole);
 
         if (currentApproval) {

@@ -139,21 +139,21 @@ const createExcuseRequest = async (req, res) => {
       });
 
       // Notify requester
-      await createAndSendNotification({
+      createAndSendNotification({
         userId: studentId,
         message: `Your excuse request has been submitted. Status: ${initialStatus}.`,
         type: 'info',
-      });
+      }).catch(e => console.error('Failed to send notification to requester:', e));
 
       // Notify first approver
       if (firstApproverRole) {
         const approvers = await User.find({ role: firstApproverRole });
         for (const approver of approvers) {
-          await createAndSendNotification({
+          createAndSendNotification({
             userId: approver._id,
             message: `New excuse request from ${studentName} is awaiting your approval.`,
             type: 'info',
-          });
+          }).catch(e => console.error('Failed to send notification to approver:', e));
         }
       }
     }

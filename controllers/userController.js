@@ -27,6 +27,17 @@ const registerUser = async (req, res) => {
   const { name, email, nic, password, role, department, indexNumber, mobile } = req.body;
 
   try {
+    // Check if new registrations are allowed
+    const SystemConfig = (await import('../models/SystemConfig.js')).default;
+    const allowRegistrationsConfig = await SystemConfig.findOne({ key: 'ALLOW_NEW_REGISTRATIONS' });
+
+    if (allowRegistrationsConfig && allowRegistrationsConfig.value === false) {
+      return res.status(403).json({
+        message: 'New registrations are currently disabled. Please contact the administrator.',
+        registrationsClosed: true
+      });
+    }
+
     // Check if user/registration exists by email, NIC, or mobile
     const userExistsByEmail = await User.findOne({ email });
     const userExistsByNic = await User.findOne({ nic });

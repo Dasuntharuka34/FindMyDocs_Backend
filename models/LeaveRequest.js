@@ -7,7 +7,7 @@ import mongoose from 'mongoose';
 const approvalStageSchema = mongoose.Schema({
   approverRole: {
     type: String,
-    enum: ['Lecturer', 'HOD', 'Dean', 'VC'],
+    enum: ['Lecturer', 'HOD', 'Dean', 'VC', 'LECTURER', 'DEAN', 'System', 'Admin'],
     required: true
   },
   approverId: {
@@ -72,9 +72,9 @@ const leaveRequestSchema = mongoose.Schema({
     default: 'Submitted'
   },
   submittedDate: {
-      type: Date,
-      default: Date.now,
-    },
+    type: Date,
+    default: Date.now,
+  },
   approvals: [approvalStageSchema], // Array to track each approval stage
   submittedAt: {
     type: Date,

@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 const approvalStageSchema = mongoose.Schema({
   approverRole: {
     type: String,
-    enum: ['Lecturer', 'HOD', 'Dean', 'VC'],
+    enum: ['Lecturer', 'HOD', 'Dean', 'VC', 'LECTURER', 'DEAN', 'System', 'Admin'],
     required: true
   },
   approverId: {

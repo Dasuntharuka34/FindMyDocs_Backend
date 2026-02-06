@@ -91,6 +91,15 @@ const createExcuseRequest = async (req, res) => {
     const initialStatus = stages[initialStageIndex].name;
     const firstApproverRole = stages[initialStageIndex].approverRole;
 
+    // Parse absences - handle both string and object
+    let parsedAbsences;
+    try {
+      parsedAbsences = typeof absences === 'string' ? JSON.parse(absences) : absences;
+    } catch (parseError) {
+      console.error('Error parsing absences:', parseError);
+      return res.status(400).json({ message: 'Invalid absences format', error: parseError.message });
+    }
+
     const newRequest = new ExcuseRequest({
       studentId,
       studentName,
@@ -100,7 +109,7 @@ const createExcuseRequest = async (req, res) => {
       address,
       levelOfStudy,
       subjectCombo,
-      absences: JSON.parse(absences),
+      absences: parsedAbsences,
       reason,
       reasonDetails,
       lectureAbsents,

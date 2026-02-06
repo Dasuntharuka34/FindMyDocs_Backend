@@ -20,4 +20,7 @@ router
   .delete(protect, admin, deleteForm);
 router.route('/:id/status').put(protect, admin, updateFormStatus);
 
+router.get('/analytics', protect, admin, getFormAnalytics);
+router.post('/:id/version', protect, admin, createNewVersion);
+
 export default router;

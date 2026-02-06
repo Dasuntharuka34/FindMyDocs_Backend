@@ -8,7 +8,9 @@ import {
   getLettersByUserId,
   getPendingApprovals,
   updateLetterStatus,
-  getAllLetters
+  getAllLetters,
+  bulkApproveLetters,
+  bulkRejectLetters
 } from '../controllers/letterController.js';
 
 const router = express.Router();
@@ -46,7 +48,14 @@ router.get('/byUser/:userId', protect, getLettersByUserId);
 router.get('/pendingApprovals/:statusName', protect, getPendingApprovals);
 
 // Route to update letter status (Approve/Reject)
+// Route to update letter status (Approve/Reject)
 router.put('/:id/status', protect, updateLetterStatus);
+
+// Bulk Approve Letters
+router.post('/bulk-approve', protect, bulkApproveLetters);
+
+// Bulk Reject Letters
+router.post('/bulk-reject', protect, bulkRejectLetters);
 
 // IMPORTANT: Route to get a single letter by its ID.
 router.get('/:id', protect, getLetterById);

@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import Registration from '../models/Registration.js';
+import SystemConfig from '../models/SystemConfig.js';
 import { sendRegistrationEmail } from '../utils/mailService.js';
 
 // @desc    Get all pending registrations
@@ -23,6 +24,12 @@ const createRegistration = async (req, res) => {
   const { name, email, nic, mobile, password, role, indexNumber, department } = req.body;
 
   try {
+    // Check if registration is allowed
+    const signupConfig = await SystemConfig.findOne({ key: 'ALLOW_NEW_REGISTRATIONS' });
+    if (signupConfig && signupConfig.value === false) {
+      return res.status(403).json({ message: 'Registrations are currently disabled by administrator' });
+    }
+
     const registrationExists = await Registration.findOne({ email });
     if (registrationExists) {
       return res.status(400).json({ message: 'An application with this email already exists' });

@@ -35,8 +35,23 @@ const formSchema = new mongoose.Schema({
           default: false,
         },
       },
+      logic: {
+        showIf: {
+          field: String,
+          value: mongoose.Schema.Types.Mixed,
+          operator: { type: String, enum: ['equals', 'notEquals', 'contains'] }
+        }
+      }
     },
   ],
+  version: {
+    type: Number,
+    default: 1,
+  },
+  isArchived: {
+    type: Boolean,
+    default: false,
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

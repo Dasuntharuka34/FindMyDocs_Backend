@@ -7,6 +7,10 @@ import { uploadToBlob } from '../config/vercelBlob.js';
 import ExcuseRequest from '../models/ExcuseRequest.js';
 import LeaveRequest from '../models/LeaveRequest.js';
 import Letter from '../models/Letter.js';
+import csv from 'csv-parser';
+import { Readable } from 'stream';
+import { logAuditAction } from './auditController.js';
+import { logSecurityEvent } from '../utils/securityLogger.js';
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -107,16 +111,36 @@ const authUser = async (req, res) => {
     const user = await User.findOne({ nic });
 
     if (!user) {
+      await logSecurityEvent({
+        eventType: 'LOGIN_FAILED',
+        userNic: nic,
+        reason: 'User not found'
+      }, req);
       return res.status(401).json({ message: 'Invalid NIC or password' });
     }
 
     // Compare plain password with hashed password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
+      await logSecurityEvent({
+        eventType: 'LOGIN_FAILED',
+        userId: user._id,
+        userEmail: user.email,
+        userNic: nic,
+        reason: 'Invalid password'
+      }, req);
       return res.status(401).json({ message: 'Invalid NIC or password' });
     }
 
     const token = generateToken(user._id);
+
+    await logSecurityEvent({
+      eventType: 'LOGIN_SUCCESS',
+      userId: user._id,
+      userEmail: user.email,
+      userNic: nic,
+      success: true
+    }, req);
 
     res.json({
       user: {
@@ -552,5 +576,315 @@ const getAllPendingRequests = async (req, res) => {
 };
 
 // Export all controller functions for use in routes
-export { approveRegistration, authUser, changePassword, createUser, deleteUser, getAllPendingRequests, getPendingRegistrations, getUsers, registerUser, rejectRegistration, resetUserPassword, updateUser };
+// @desc    Bulk import users from CSV
+// @route   POST /api/users/bulk-import
+// @access  Private/Admin
+const bulkImportUsers = async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: 'No file uploaded' });
+  }
+
+  const results = [];
+  const errors = [];
+  let successCount = 0;
+
+  try {
+    const stream = Readable.from(req.file.buffer.toString());
+
+    stream
+      .pipe(csv())
+      .on('data', (data) => results.push(data))
+      .on('end', async () => {
+        for (const row of results) {
+          try {
+            // Validate required fields
+            if (!row.name || !row.email || !row.nic || !row.role) {
+              errors.push({ email: row.email, error: 'Missing required fields' });
+              continue;
+            }
+
+            // Check if user exists
+            const userExists = await User.findOne({
+              $or: [{ email: row.email }, { nic: row.nic }]
+            });
+
+            if (userExists) {
+              errors.push({ email: row.email, error: 'User already exists' });
+              continue;
+            }
+
+            // Create user
+            const salt = await bcrypt.genSalt(10);
+            const hashedPassword = await bcrypt.hash(row.password || 'password123', salt);
+
+            await User.create({
+              name: row.name,
+              email: row.email,
+              nic: row.nic,
+              mobile: row.mobile,
+              role: row.role,
+              department: row.department,
+              indexNumber: row.indexNumber,
+              password: hashedPassword,
+            });
+
+            successCount++;
+          } catch (err) {
+            errors.push({ email: row.email, error: err.message });
+          }
+        }
+
+        await logAuditAction(
+          req.user._id,
+          req.user.name,
+          'BULK_OPERATION',
+          'User',
+          null,
+          'Bulk User Import',
+          { successCount, errorCount: errors.length },
+          { errors },
+          req
+        );
+
+        res.json({
+          message: `Import processed. Success: ${successCount}, Failed: ${errors.length}`,
+          errors: errors.length > 0 ? errors : undefined,
+          successCount
+        });
+      });
+  } catch (error) {
+    console.error('Error in bulk import:', error);
+    res.status(500).json({ message: 'Error processing import', error: error.message });
+  }
+};
+
+// @desc    Bulk delete users
+// @route   POST /api/users/bulk-delete
+// @access  Private/Admin
+const bulkDeleteUsers = async (req, res) => {
+  const { userIds } = req.body;
+
+  if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+    return res.status(400).json({ message: 'No users selected' });
+  }
+
+  try {
+    const result = await User.deleteMany({ _id: { $in: userIds } });
+
+    await logAuditAction(
+      req.user._id,
+      req.user.name,
+      'BULK_OPERATION',
+      'User',
+      null,
+      'Bulk User Delete',
+      { count: result.deletedCount, userIds },
+      {},
+      req
+    );
+
+    res.json({ message: `Successfully deleted ${result.deletedCount} users` });
+  } catch (error) {
+    console.error('Error in bulk delete:', error);
+    res.status(500).json({ message: 'Error deleting users', error: error.message });
+  }
+};
+
+// @desc    Bulk reset passwords
+// @route   POST /api/users/bulk-reset-password
+// @access  Private/Admin
+const bulkResetPasswords = async (req, res) => {
+  const { userIds, newPassword } = req.body;
+  const passwordToSet = newPassword || 'password123';
+
+  if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+    return res.status(400).json({ message: 'No users selected' });
+  }
+
+  try {
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(passwordToSet, salt);
+
+    const result = await User.updateMany(
+      { _id: { $in: userIds } },
+      { $set: { password: hashedPassword } }
+    );
+
+    await logAuditAction(
+      req.user._id,
+      req.user.name,
+      'BULK_OPERATION',
+      'User',
+      null,
+      'Bulk Password Reset',
+      { count: result.modifiedCount, userIds },
+      {},
+      req
+    );
+
+    res.json({ message: `Successfully reset passwords for ${result.modifiedCount} users` });
+  } catch (error) {
+    console.error('Error in bulk password reset:', error);
+    res.status(500).json({ message: 'Error resetting passwords', error: error.message });
+  }
+};
+
+// @desc    Bulk update roles
+// @route   POST /api/users/bulk-update-roles
+// @access  Private/Admin
+const bulkUpdateRoles = async (req, res) => {
+  const { userIds, role } = req.body;
+
+  if (!userIds || !Array.isArray(userIds) || userIds.length === 0 || !role) {
+    return res.status(400).json({ message: 'Invalid request parameters' });
+  }
+
+  try {
+    const result = await User.updateMany(
+      { _id: { $in: userIds } },
+      { $set: { role } }
+    );
+
+    await logAuditAction(
+      req.user._id,
+      req.user.name,
+      'BULK_OPERATION',
+      'User',
+      null,
+      'Bulk Role Update',
+      { count: result.modifiedCount, role, userIds },
+      {},
+      req
+    );
+
+    res.json({ message: `Successfully updated roles for ${result.modifiedCount} users` });
+  } catch (error) {
+    console.error('Error in bulk role update:', error);
+    res.status(500).json({ message: 'Error updating roles', error: error.message });
+  }
+};
+
+// @desc    Get user activity history
+// @route   GET /api/users/:id/activity
+// @access  Private/Admin
+const getUserActivityHistory = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // This assumes we implement AuditLog or check individual request collections
+    // For now, let's aggregate from request collections as a start, or use AuditLog if populated
+    // Since AuditLog is new, we might check both or just requests for now
+
+    // Check if AuditLog model exists/is imported. It is not imported at top level yet, need check.
+    // Ideally AuditLog should be used.
+
+    // For now, let's fetch requests (Excuse, Leave, Letter) submitted by this user
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // Since we don't have a unified "Activity" model besides the new AuditLog (which is empty for past events),
+    // we'll fetch from requests.
+    const [excuseRequests, leaveRequests, letters] = await Promise.all([
+      ExcuseRequest.find({ studentName: user.name }).sort({ submittedDate: -1 }),
+      LeaveRequest.find({ studentName: user.name }).sort({ submittedDate: -1 }),
+      Letter.find({ student: user.name }).sort({ submittedDate: -1 })
+    ]);
+
+    const activity = [
+      ...excuseRequests.map(r => ({ type: 'Excuse Request', date: r.submittedDate, details: r.reason, status: r.status })),
+      ...leaveRequests.map(r => ({ type: 'Leave Request', date: r.submittedDate, details: r.reason, status: r.status })),
+      ...letters.map(r => ({ type: 'Letter Request', date: r.submittedDate, details: r.reason, status: r.status }))
+    ].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    res.json(activity);
+  } catch (error) {
+    console.error('Error fetching user activity:', error);
+    res.status(500).json({ message: 'Error fetching activity', error: error.message });
+  }
+};
+
+// @desc    Toggle user active status
+// @route   PUT /api/users/:id/toggle-status
+// @access  Private/Admin
+const toggleUserStatus = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // Toggle logic (assuming isActive field exists, if not default to true)
+    const newStatus = user.isActive === false ? true : false;
+    user.isActive = newStatus;
+    await user.save();
+
+    await logAuditAction(
+      req.user._id,
+      req.user.name,
+      'USER_STATUS_CHANGED',
+      'User',
+      id,
+      user.name,
+      { isActive: newStatus },
+      {},
+      req
+    );
+
+    res.json({ message: `User ${user.name} is now ${newStatus ? 'Active' : 'Suspended'}`, isActive: newStatus });
+  } catch (error) {
+    console.error('Error toggling user status:', error);
+    res.status(500).json({ message: 'Error updating user status', error: error.message });
+  }
+};
+
+// @desc    Advanced user search
+// @route   POST /api/users/search
+// @access  Private/Admin
+const searchUsers = async (req, res) => {
+  const { query, role, department, status } = req.body;
+
+  try {
+    const searchCriteria = {};
+
+    if (query) {
+      searchCriteria.$or = [
+        { name: { $regex: query, $options: 'i' } },
+        { email: { $regex: query, $options: 'i' } },
+        { nic: { $regex: query, $options: 'i' } }
+      ];
+    }
+
+    if (role) searchCriteria.role = role;
+    if (department) searchCriteria.department = department;
+    if (status !== undefined) searchCriteria.isActive = status;
+
+    const users = await User.find(searchCriteria).select('-password');
+    res.json(users);
+  } catch (error) {
+    console.error('Error searching users:', error);
+    res.status(500).json({ message: 'Error searching users', error: error.message });
+  }
+};
+
+export {
+  approveRegistration,
+  authUser,
+  changePassword,
+  createUser,
+  deleteUser,
+  getAllPendingRequests,
+  getPendingRegistrations,
+  getUsers,
+  registerUser,
+  rejectRegistration,
+  resetUserPassword,
+  updateUser,
+  bulkImportUsers,
+  bulkDeleteUsers,
+  bulkResetPasswords,
+  bulkUpdateRoles,
+  getUserActivityHistory,
+  toggleUserStatus,
+  searchUsers
+};
 

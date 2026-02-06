@@ -251,5 +251,150 @@ const updateLetterStatus = async (req, res) => {
     }
 };
 
-export { createLetter, getLetterById, getLettersByUserId, getPendingApprovals, updateLetterStatus, getAllLetters };
+// --- BULK APPROVE LETTERS ---
+const bulkApproveLetters = async (req, res) => {
+    const { requestIds, approverId } = req.body;
+
+    if (!requestIds || !Array.isArray(requestIds) || requestIds.length === 0) {
+        return res.status(400).json({ message: 'No request IDs provided' });
+    }
+
+    let successCount = 0;
+    let failureCount = 0;
+    const errors = [];
+
+    try {
+        const approverUser = await User.findById(approverId);
+        if (!approverUser) {
+            return res.status(404).json({ message: 'Approver user not found.' });
+        }
+
+        for (const id of requestIds) {
+            try {
+                const letter = await Letter.findById(id);
+                if (!letter) {
+                    failureCount++;
+                    errors.push(`Letter ${id} not found`);
+                    continue;
+                }
+
+                const currentStage = approvalStages[letter.currentStageIndex];
+                if (req.user.role !== currentStage.approverRole) {
+                    failureCount++;
+                    errors.push(`Not authorized for letter ${id}`);
+                    continue;
+                }
+
+                const currentApproval = letter.approvals.find(a => a.status === 'pending' && a.approverRole === currentStage.approverRole);
+
+                if (currentApproval) {
+                    currentApproval.status = 'approved';
+                    currentApproval.approvedAt = new Date();
+                    currentApproval.approverId = approverId;
+                    currentApproval.approverName = approverUser.name;
+                    currentApproval.comment = 'Bulk Approved';
+                }
+
+                const nextStageIndex = letter.currentStageIndex + 1;
+                const nextStage = approvalStages[nextStageIndex];
+                letter.currentStageIndex = nextStageIndex;
+                letter.status = nextStage.name;
+
+                if (nextStage.approverRole) {
+                    letter.approvals.push({
+                        approverRole: nextStage.approverRole,
+                        status: 'pending'
+                    });
+                }
+
+                letter.lastUpdated = new Date();
+                await letter.save();
+
+                successCount++;
+            } catch (err) {
+                console.error(`Error processing letter ${id}:`, err);
+                failureCount++;
+                errors.push(`Error processing ${id}: ${err.message}`);
+            }
+        }
+
+        res.status(200).json({
+            message: `Bulk approval complete. Success: ${successCount}, Failed: ${failureCount}`,
+            results: { success: successCount, failure: failureCount, errors }
+        });
+
+    } catch (error) {
+        console.error("Error in bulk approve:", error);
+        res.status(500).json({ message: 'Server error during bulk approval', error: error.message });
+    }
+};
+
+// --- BULK REJECT LETTERS ---
+const bulkRejectLetters = async (req, res) => {
+    const { requestIds, approverId, comment } = req.body;
+
+    if (!requestIds || !Array.isArray(requestIds) || requestIds.length === 0) {
+        return res.status(400).json({ message: 'No request IDs provided' });
+    }
+
+    let successCount = 0;
+    let failureCount = 0;
+    const errors = [];
+
+    try {
+        const approverUser = await User.findById(approverId);
+        if (!approverUser) {
+            return res.status(404).json({ message: 'Approver user not found.' });
+        }
+
+        for (const id of requestIds) {
+            try {
+                const letter = await Letter.findById(id);
+                if (!letter) {
+                    failureCount++;
+                    errors.push(`Letter ${id} not found`);
+                    continue;
+                }
+
+                const currentStage = approvalStages[letter.currentStageIndex];
+                if (req.user.role !== currentStage.approverRole) {
+                    failureCount++;
+                    errors.push(`Not authorized for letter ${id}`);
+                    continue;
+                }
+
+                const currentApproval = letter.approvals.find(a => a.status === 'pending' && a.approverRole === currentStage.approverRole);
+
+                if (currentApproval) {
+                    currentApproval.status = 'rejected';
+                    currentApproval.approvedAt = new Date();
+                    currentApproval.approverId = approverId;
+                    currentApproval.approverName = approverUser.name;
+                    currentApproval.comment = comment || 'Bulk Rejected';
+                }
+
+                letter.status = 'Rejected';
+                letter.lastUpdated = new Date();
+                await letter.save();
+
+                successCount++;
+            } catch (err) {
+                console.error(`Error rejecting letter ${id}:`, err);
+                failureCount++;
+                errors.push(`Error processing ${id}: ${err.message}`);
+            }
+        }
+
+        res.status(200).json({
+            message: `Bulk rejection complete. Success: ${successCount}, Failed: ${failureCount}`,
+            results: { success: successCount, failure: failureCount, errors }
+        });
+
+    } catch (error) {
+        console.error("Error in bulk reject:", error);
+        res.status(500).json({ message: 'Server error during bulk rejection', error: error.message });
+    }
+};
+
+export { createLetter, getLetterById, getLettersByUserId, getPendingApprovals, updateLetterStatus, getAllLetters, bulkApproveLetters, bulkRejectLetters };
 

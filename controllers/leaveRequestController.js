@@ -3,6 +3,7 @@ import LeaveRequest from '../models/LeaveRequest.js';
 import Notification from '../models/Notification.js';
 import User from '../models/User.js';
 import { createAndSendNotification } from './notificationController.js';
+import { evaluateAutoApproval } from '../utils/autoApprovalEngine.js';
 
 // --- APPROVAL STAGE DEFINITIONS (ඉල්ලීම් අනුමත කිරීමේ අදියරයන්) ---
 const approvalStages = [
@@ -122,31 +123,63 @@ const createLeaveRequest = async (req, res) => {
       approverRole: firstApproverRole,
       status: 'pending'
     });
+    // Check for Auto Approval
+    const shouldAutoApprove = await evaluateAutoApproval({ ...req.body, startDate, endDate }, 'Leave');
+
+    if (shouldAutoApprove) {
+      newRequest.status = 'Approved';
+      newRequest.currentStageIndex = approvalStages.length - 1;
+      newRequest.approvals.push({
+        approverRole: 'System',
+        approverName: 'Auto Approval System',
+        status: 'approved',
+        approvedAt: new Date(),
+        comment: 'Auto-approved based on active rules.'
+      });
+
+      // Notify student immediately
+      createAndSendNotification({
+        userId: req.user._id,
+        message: 'Your leave request has been Auto-Approved based on system rules.',
+        type: 'success',
+      }).catch(e => console.error(e));
+
+    } else {
+      // Add the first stage to the approvals array
+      newRequest.approvals.push({
+        approverRole: firstApproverRole,
+        status: 'pending'
+      });
+
+      // Notify the requester
+      await createAndSendNotification({
+        userId: requesterId,
+        message: `Your leave request has been submitted. Status: ${initialStatus}.`,
+        type: 'info',
+      });
+
+      // Notify the first approver role
+      if (firstApproverRole) {
+        const approvers = await User.find({ role: firstApproverRole });
+        if (approvers.length > 0) {
+          for (const approver of approvers) {
+            await createAndSendNotification({
+              userId: approver._id,
+              message: `New leave request from ${requesterName} is awaiting your approval.`,
+              type: 'info',
+            });
+          }
+        } else {
+          console.warn(`No users with role '${firstApproverRole}' found to send notification.`);
+        }
+      }
+    }
 
     const createdRequest = await newRequest.save();
 
-    // Notify the requester
-    await createAndSendNotification({
-      userId: requesterId,
-      message: `Your leave request has been submitted. Status: ${initialStatus}.`,
-      type: 'info',
-    });
-
-    // Notify the first approver role
-    if (firstApproverRole) {
-      const approvers = await User.find({ role: firstApproverRole });
-      if (approvers.length > 0) {
-        for (const approver of approvers) {
-          await createAndSendNotification({
-            userId: approver._id,
-            message: `New leave request from ${requesterName} is awaiting your approval.`,
-            type: 'info',
-          });
-        }
-      } else {
-        console.warn(`No users with role '${firstApproverRole}' found to send notification.`);
-      }
-    }
+    // If not auto-approved, the requester notification is handled in the else block above.
+    // If auto-approved, a specific success notification is sent.
+    // So, the generic requester notification here is removed.
 
     res.status(201).json({ message: 'Leave request submitted successfully!', request: createdRequest });
 
@@ -388,9 +421,216 @@ const deleteLeaveRequest = async (req, res) => {
   }
 };
 
+// --- BULK APPROVE LEAVE REQUESTS ---
+const bulkApproveLeaveRequests = async (req, res) => {
+  const { requestIds, approverId } = req.body;
+
+  if (!requestIds || !Array.isArray(requestIds) || requestIds.length === 0) {
+    return res.status(400).json({ message: 'No request IDs provided' });
+  }
+
+  let successCount = 0;
+  let failureCount = 0;
+  const errors = [];
+
+  try {
+    const approverUser = await User.findById(approverId);
+    if (!approverUser) {
+      return res.status(404).json({ message: 'Approver user not found.' });
+    }
+
+    for (const id of requestIds) {
+      try {
+        const request = await LeaveRequest.findById(id);
+        if (!request) {
+          failureCount++;
+          errors.push(`Request ${id} not found`);
+          continue;
+        }
+
+        const nextExpectedApprover = approvalStages[request.currentStageIndex].approverRole;
+        if (req.user.role !== nextExpectedApprover) {
+          failureCount++;
+          errors.push(`Not authorized for request ${id}`);
+          continue;
+        }
+
+        // Approval Logic
+        const approverRole = approvalStages[request.currentStageIndex].approverRole;
+        const currentApproval = request.approvals.find(a => a.status === 'pending' && a.approverRole === approverRole);
+
+        if (currentApproval) {
+          currentApproval.status = 'approved';
+          currentApproval.approvedAt = new Date();
+          currentApproval.approverId = approverId;
+          currentApproval.approverName = approverUser.name;
+          currentApproval.comment = 'Bulk Approved';
+        }
+
+
+        // Check for Auto Approval
+        const shouldAutoApprove = await evaluateAutoApproval(finalData, 'Leave');
+
+        if (shouldAutoApprove) {
+          request.status = 'Approved';
+          request.currentStageIndex = approvalStages.length - 1; // Last stage (Approved)
+          request.approvals.push({
+            approverRole: 'System', // Indicate system auto-approval
+            approverName: 'Auto Approval System',
+            status: 'approved',
+            approvedAt: new Date(),
+            comment: 'Auto-approved based on active rules.'
+          });
+
+          // Notify student immediately
+          createAndSendNotification({
+            userId: req.user._id,
+            message: 'Your leave request has been Auto-Approved based on system rules.',
+            type: 'success',
+          }).catch(e => console.error(e));
+
+        } else {
+          const nextStageIndex = request.currentStageIndex + 1;
+          const nextStage = approvalStages[nextStageIndex];
+          request.currentStageIndex = nextStageIndex;
+          request.status = nextStage.name;
+
+          if (nextStage.approverRole) {
+            request.approvals.push({
+              approverRole: nextStage.approverRole,
+              status: 'pending'
+            });
+
+            // Uploading might take time, don't await notification
+            User.find({ role: nextStage.approverRole }).then(approvers => {
+              approvers.forEach(approver => {
+                createAndSendNotification({
+                  userId: approver._id,
+                  message: `New leave request from ${req.user.name} is awaiting approval.`,
+                  type: 'info',
+                }).catch(e => console.error(e));
+              });
+            });
+          }
+        }
+
+        const createdRequest = await request.save();
+
+        if (nextStage.approverRole) {
+          // Notify next approvers
+          User.find({ role: nextStage.approverRole }).then(approvers => {
+            approvers.forEach(approver => {
+              createAndSendNotification({
+                userId: approver._id,
+                message: `New leave request from ${request.studentName} is awaiting approval.`,
+                type: 'info',
+              }).catch(e => console.error(e));
+            });
+          });
+        } else {
+          createAndSendNotification({
+            userId: request.studentId,
+            message: `Your leave request for ${request.reason} has been fully APPROVED.`,
+            type: 'success',
+          }).catch(console.error);
+        }
+
+        successCount++;
+      } catch (err) {
+        console.error(`Error processing request ${id}:`, err);
+        failureCount++;
+        errors.push(`Error processing ${id}: ${err.message}`);
+      }
+    }
+
+    res.status(200).json({
+      message: `Bulk approval complete. Success: ${successCount}, Failed: ${failureCount}`,
+      results: { success: successCount, failure: failureCount, errors }
+    });
+
+  } catch (error) {
+    console.error("Error in bulk approve:", error);
+    res.status(500).json({ message: 'Server error during bulk approval', error: error.message });
+  }
+};
+
+// --- BULK REJECT LEAVE REQUESTS ---
+const bulkRejectLeaveRequests = async (req, res) => {
+  const { requestIds, approverId, comment } = req.body;
+
+  if (!requestIds || !Array.isArray(requestIds) || requestIds.length === 0) {
+    return res.status(400).json({ message: 'No request IDs provided' });
+  }
+
+  let successCount = 0;
+  let failureCount = 0;
+  const errors = [];
+
+  try {
+    const approverUser = await User.findById(approverId);
+    if (!approverUser) {
+      return res.status(404).json({ message: 'Approver user not found.' });
+    }
+
+    for (const id of requestIds) {
+      try {
+        const request = await LeaveRequest.findById(id);
+        if (!request) {
+          failureCount++;
+          errors.push(`Request ${id} not found`);
+          continue;
+        }
+
+        const nextExpectedApprover = approvalStages[request.currentStageIndex].approverRole;
+        if (req.user.role !== nextExpectedApprover) {
+          failureCount++;
+          errors.push(`Not authorized for request ${id}`);
+          continue;
+        }
+
+        // Reject Logic
+        const approverRole = approvalStages[request.currentStageIndex].approverRole;
+        request.status = 'Rejected';
+        request.approvals.push({
+          approverRole: approverRole,
+          approverId: approverId,
+          approverName: approverUser.name,
+          status: 'rejected',
+          approvedAt: new Date(),
+          comment: comment || 'Bulk Rejected'
+        });
+
+        await request.save();
+
+        createAndSendNotification({
+          userId: request.studentId,
+          message: `Your leave request has been REJECTED by ${approverUser.name}.${comment ? ` Reason: ${comment}` : ''}`,
+          type: 'error',
+        }).catch(err => console.error('Notification error', err));
+
+        successCount++;
+      } catch (err) {
+        console.error(`Error rejecting request ${id}:`, err);
+        failureCount++;
+        errors.push(`Error processing ${id}: ${err.message}`);
+      }
+    }
+
+    res.status(200).json({
+      message: `Bulk rejection complete. Success: ${successCount}, Failed: ${failureCount}`,
+      results: { success: successCount, failure: failureCount, errors }
+    });
+
+  } catch (error) {
+    console.error("Error in bulk reject:", error);
+    res.status(500).json({ message: 'Server error during bulk rejection', error: error.message });
+  }
+};
+
 export {
   approveLeaveRequest, createLeaveRequest, deleteLeaveRequest, getLeaveRequestById, getLeaveRequests, getLeaveRequestsByUserId,
   // --- EXPORT THE NEW FUNCTION ---
-  getPendingLeaveRequests, rejectLeaveRequest
+  getPendingLeaveRequests, rejectLeaveRequest,
+  bulkApproveLeaveRequests, bulkRejectLeaveRequests
 };
 

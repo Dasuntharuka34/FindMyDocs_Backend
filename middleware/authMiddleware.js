@@ -1,5 +1,7 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import Role from '../models/Role.js';
+import { logSecurityEvent } from '../utils/securityLogger.js';
 
 const protect = async (req, res, next) => {
   let token;
@@ -21,7 +23,7 @@ const protect = async (req, res, next) => {
 
       next();
     } catch (error) {
-      console.error('Token verification failed:', error.message); // More detailed logging
+      console.error('Token verification failed:', error.message);
       return res.status(401).json({ message: `Not authorized, token failed. Reason: ${error.message}` });
     }
   }
@@ -39,4 +41,39 @@ const admin = (req, res, next) => {
   }
 };
 
-export { protect, admin };
+const checkPermission = (permission) => {
+  return async (req, res, next) => {
+    try {
+      if (!req.user || !req.user.role) {
+        return res.status(401).json({ message: 'Not authorized, no role' });
+      }
+
+      // Admin has all permissions
+      if (req.user.role.toLowerCase() === 'admin') {
+        return next();
+      }
+
+      const role = await Role.findOne({ name: req.user.role });
+      if (!role) {
+        return res.status(401).json({ message: 'Role not found' });
+      }
+
+      if (role.permissions.includes(permission)) {
+        next();
+      } else {
+        await logSecurityEvent({
+          eventType: 'UNAUTHORIZED_ACCESS',
+          userId: req.user._id,
+          userEmail: req.user.email,
+          reason: `Missing permission: ${permission}`,
+          metadata: { attemptedPermission: permission }
+        }, req);
+        res.status(403).json({ message: `Access denied: Required permission [${permission}] is missing` });
+      }
+    } catch (error) {
+      res.status(500).json({ message: 'Error checking permission', error: error.message });
+    }
+  };
+};
+
+export { protect, admin, checkPermission };

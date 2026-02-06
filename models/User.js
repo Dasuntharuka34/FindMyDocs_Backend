@@ -38,6 +38,17 @@ const userSchema = mongoose.Schema(
       type: String,
       default: null,
     },
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+    lastLoginAt: {
+      type: Date,
+    },
+    loginAttempts: {
+      type: Number,
+      default: 0,
+    },
   },
   {
     timestamps: true,

@@ -5,6 +5,7 @@ import Notification from '../models/Notification.js';
 import User from '../models/User.js';
 import { put, del } from '@vercel/blob';
 import { createAndSendNotification } from './notificationController.js';
+import { evaluateAutoApproval } from '../utils/autoApprovalEngine.js';
 
 // --- APPROVAL STAGE DEFINITIONS ---
 const approvalStages = [
@@ -109,31 +110,54 @@ const createExcuseRequest = async (req, res) => {
       submittedDate: new Date(),
     });
 
-    newRequest.approvals.push({
-      approverRole: firstApproverRole,
-      status: 'pending'
-    });
+    // Check for Auto Approval
+    const shouldAutoApprove = await evaluateAutoApproval({ ...req.body }, 'Excuse');
+
+    if (shouldAutoApprove) {
+        newRequest.status = 'Approved';
+        newRequest.currentStageIndex = approvalStages.length - 1;
+        newRequest.approvals.push({
+            approverRole: 'System',
+            approverName: 'Auto Approval System',
+            status: 'approved',
+            approvedAt: new Date(),
+            comment: 'Auto-approved based on active rules.'
+        });
+        
+         // Notify student immediately
+        createAndSendNotification({
+            userId: req.user._id,
+            message: 'Your excuse request has been Auto-Approved based on system rules.',
+            type: 'success',
+        }).catch(e => console.error(e));
+
+    } else {
+        newRequest.approvals.push({
+            approverRole: firstApproverRole,
+            status: 'pending'
+        });
+
+        // Notify requester
+        await createAndSendNotification({
+            userId: studentId,
+            message: `Your excuse request has been submitted. Status: ${initialStatus}.`,
+            type: 'info',
+        });
+
+        // Notify first approver
+        if (firstApproverRole) {
+            const approvers = await User.find({ role: firstApproverRole });
+            for (const approver of approvers) {
+                await createAndSendNotification({
+                    userId: approver._id,
+                    message: `New excuse request from ${studentName} is awaiting your approval.`,
+                    type: 'info',
+                });
+            }
+        }
+    }
 
     const createdRequest = await newRequest.save();
-
-    // Notify requester
-    await createAndSendNotification({
-      userId: studentId,
-      message: `Your excuse request has been submitted. Status: ${initialStatus}.`,
-      type: 'info',
-    });
-
-    // Notify first approver
-    if (firstApproverRole) {
-      const approvers = await User.find({ role: firstApproverRole });
-      for (const approver of approvers) {
-        await createAndSendNotification({
-          userId: approver._id,
-          message: `New excuse request from ${studentName} is awaiting your approval.`,
-          type: 'info',
-        });
-      }
-    }
 
     res.status(201).json({ message: 'Excuse request submitted successfully!', request: createdRequest });
   } catch (error) {
@@ -374,6 +398,176 @@ const deleteExcuseRequest = async (req, res) => {
   }
 };
 
+// --- BULK APPROVE EXCUSE REQUESTS ---
+const bulkApproveExcuseRequests = async (req, res) => {
+  const { requestIds, approverId } = req.body;
+
+  if (!requestIds || !Array.isArray(requestIds) || requestIds.length === 0) {
+    return res.status(400).json({ message: 'No request IDs provided' });
+  }
+
+  let successCount = 0;
+  let failureCount = 0;
+  const errors = [];
+
+  try {
+    const approverUser = await User.findById(approverId);
+    if (!approverUser) {
+      return res.status(404).json({ message: 'Approver user not found.' });
+    }
+
+    for (const id of requestIds) {
+      try {
+        const request = await ExcuseRequest.findById(id);
+        if (!request) {
+          failureCount++;
+          errors.push(`Request ${id} not found`);
+          continue;
+        }
+
+        const nextExpectedApprover = approvalStages[request.currentStageIndex].approverRole;
+        if (req.user.role !== nextExpectedApprover) {
+          failureCount++;
+          errors.push(`Not authorized for request ${id}`);
+          continue;
+        }
+
+        // Approval Logic (same as single approve)
+        const approverRole = approvalStages[request.currentStageIndex].approverRole;
+        const currentApproval = request.approvals.find(a => a.status === 'pending' && a.approverRole === approverRole);
+
+        if (currentApproval) {
+          currentApproval.status = 'approved';
+          currentApproval.approvedAt = new Date();
+          currentApproval.approverId = approverId;
+          currentApproval.approverName = approverUser.name;
+          currentApproval.comment = 'Bulk Approved';
+        }
+
+        const nextStageIndex = request.currentStageIndex + 1;
+
+        if (approverRole === 'Dean') { // Final approval
+          request.currentStageIndex = approvalStages.findIndex(stage => stage.name === 'Approved');
+          request.status = 'Approved';
+        } else {
+          const nextStage = approvalStages[nextStageIndex];
+          request.currentStageIndex = nextStageIndex;
+          request.status = nextStage.name;
+
+          if (nextStage.approverRole) {
+            request.approvals.push({
+              approverRole: nextStage.approverRole,
+              status: 'pending'
+            });
+          }
+        }
+
+        request.lastUpdated = new Date();
+        await request.save();
+
+        // Notification (fire and forget to not block loop too much)
+        createAndSendNotification({
+          userId: request.studentId,
+          message: `Your excuse request has been approved by ${approverUser.name}. Current status: ${request.status}.`,
+          type: 'info',
+        }).catch(err => console.error('Notification error', err));
+
+        successCount++;
+      } catch (err) {
+        console.error(`Error processing request ${id}:`, err);
+        failureCount++;
+        errors.push(`Error processing ${id}: ${err.message}`);
+      }
+    }
+
+    res.status(200).json({
+      message: `Bulk approval complete. Success: ${successCount}, Failed: ${failureCount}`,
+      results: { success: successCount, failure: failureCount, errors }
+    });
+
+  } catch (error) {
+    console.error("Error in bulk approve:", error);
+    res.status(500).json({ message: 'Server error during bulk approval', error: error.message });
+  }
+};
+
+// --- BULK REJECT EXCUSE REQUESTS ---
+const bulkRejectExcuseRequests = async (req, res) => {
+  const { requestIds, approverId, comment } = req.body;
+
+  if (!requestIds || !Array.isArray(requestIds) || requestIds.length === 0) {
+    return res.status(400).json({ message: 'No request IDs provided' });
+  }
+
+  let successCount = 0;
+  let failureCount = 0;
+  const errors = [];
+
+  try {
+    const approverUser = await User.findById(approverId);
+    if (!approverUser) {
+      return res.status(404).json({ message: 'Approver user not found.' });
+    }
+
+    for (const id of requestIds) {
+      try {
+        const request = await ExcuseRequest.findById(id);
+        if (!request) {
+          failureCount++;
+          errors.push(`Request ${id} not found`);
+          continue;
+        }
+
+        const nextExpectedApprover = approvalStages[request.currentStageIndex].approverRole;
+        if (req.user.role !== nextExpectedApprover) {
+          failureCount++;
+          errors.push(`Not authorized for request ${id}`);
+          continue;
+        }
+
+        // Reject Logic
+        const approverRole = approvalStages[request.currentStageIndex].approverRole;
+        const currentApproval = request.approvals.find(a => a.status === 'pending' && a.approverRole === approverRole);
+
+        if (currentApproval) {
+          currentApproval.status = 'rejected';
+          currentApproval.approvedAt = new Date();
+          currentApproval.approverId = approverId;
+          currentApproval.approverName = approverUser.name;
+          currentApproval.comment = comment || 'Bulk Rejected';
+        }
+
+        request.status = 'Rejected';
+        request.lastUpdated = new Date();
+        await request.save();
+
+        createAndSendNotification({
+          userId: request.studentId,
+          message: `Your excuse request has been REJECTED by ${approverUser.name}.${comment ? ` Reason: ${comment}` : ''}`,
+          type: 'error',
+        }).catch(err => console.error('Notification error', err));
+
+        successCount++;
+      } catch (err) {
+        console.error(`Error rejecting request ${id}:`, err);
+        failureCount++;
+        errors.push(`Error processing ${id}: ${err.message}`);
+      }
+    }
+
+    res.status(200).json({
+      message: `Bulk rejection complete. Success: ${successCount}, Failed: ${failureCount}`,
+      results: { success: successCount, failure: failureCount, errors }
+    });
+
+  } catch (error) {
+    console.error("Error in bulk reject:", error);
+    res.status(500).json({ message: 'Server error during bulk rejection', error: error.message });
+  }
+};
+
 export {
-  approveExcuseRequest, createExcuseRequest, deleteExcuseRequest, getExcuseRequestById, getExcuseRequests, getExcuseRequestsByUserId, getPendingExcuseApprovals, rejectExcuseRequest
+  approveExcuseRequest, createExcuseRequest, deleteExcuseRequest, getExcuseRequestById,
+  getExcuseRequests, getExcuseRequestsByUserId, getPendingExcuseApprovals, rejectExcuseRequest,
+  bulkApproveExcuseRequests, bulkRejectExcuseRequests
 };

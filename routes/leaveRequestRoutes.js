@@ -12,7 +12,10 @@ import {
   getLeaveRequests,
   getLeaveRequestsByUserId,
   getPendingLeaveRequests,
-  rejectLeaveRequest
+  getPendingLeaveRequests,
+  rejectLeaveRequest,
+  bulkApproveLeaveRequests,
+  bulkRejectLeaveRequests
 } from '../controllers/leaveRequestController.js';
 
 const router = express.Router();
@@ -57,6 +60,14 @@ router.put('/:id/approve', protect, approveLeaveRequest);
 // @desc    Reject a leave request
 // @route   PUT /api/leaverequests/:id/reject
 router.put('/:id/reject', protect, rejectLeaveRequest);
+
+// @desc    Bulk Approve Leave Requests
+// @route   POST /api/leaverequests/bulk-approve
+router.post('/bulk-approve', protect, bulkApproveLeaveRequests);
+
+// @desc    Bulk Reject Leave Requests
+// @route   POST /api/leaverequests/bulk-reject
+router.post('/bulk-reject', protect, bulkRejectLeaveRequests);
 
 router.route('/:id')
   .get(protect, getLeaveRequestById)

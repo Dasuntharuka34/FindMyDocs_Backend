@@ -11,7 +11,10 @@ import {
   getExcuseRequests,
   getExcuseRequestsByUserId,
   getPendingExcuseApprovals,
-  rejectExcuseRequest
+  getPendingExcuseApprovals,
+  rejectExcuseRequest,
+  bulkApproveExcuseRequests,
+  bulkRejectExcuseRequests
 } from '../controllers/excuseRequestController.js';
 
 const router = express.Router();
@@ -59,11 +62,19 @@ router.put('/:id/reject', protect, rejectExcuseRequest);
 // @desc    Get a single excuse request by ID
 // @route   GET /api/excuserequests/:id
 router.route('/:id')
-    .get(protect, getExcuseRequestById)
-    .delete(protect, admin, deleteExcuseRequest); // Admin only
+  .get(protect, getExcuseRequestById)
+  .delete(protect, admin, deleteExcuseRequest); // Admin only
 
 
 router.get('/pendingApprovals/:statusName', protect, getPendingExcuseApprovals);
+
+// @desc    Bulk Approve Excuse Requests
+// @route   POST /api/excuserequests/bulk-approve
+router.post('/bulk-approve', protect, bulkApproveExcuseRequests);
+
+// @desc    Bulk Reject Excuse Requests
+// @route   POST /api/excuserequests/bulk-reject
+router.post('/bulk-reject', protect, bulkRejectExcuseRequests);
 
 
 export default router;

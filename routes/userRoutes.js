@@ -23,6 +23,18 @@ const upload = multer({
   }
 });
 
+const csvUpload = multer({
+  storage: storage,
+  limits: { fileSize: 1024 * 1024 * 5 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'text/csv' || file.mimetype === 'application/vnd.ms-excel' || file.originalname.toLowerCase().endsWith('.csv')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only CSV files are allowed!'), false);
+    }
+  }
+});
+
 // Import controllers
 import {
   approveRegistration,
@@ -36,7 +48,14 @@ import {
   registerUser,
   rejectRegistration,
   resetUserPassword,
-  updateUser
+  updateUser,
+  bulkImportUsers,
+  bulkDeleteUsers,
+  bulkResetPasswords,
+  bulkUpdateRoles,
+  getUserActivityHistory,
+  toggleUserStatus,
+  searchUsers
 } from '../controllers/userController.js';
 
 // --- Public Routes ---
@@ -50,8 +69,8 @@ router.route('/').get(protect, admin, getUsers).post(protect, admin, createUser)
 // This route now expects a 'profilePicture' file field
 // The path in userController.js should match the URL served by server.js
 router.route('/:id')
-    .put(protect, upload.single('profilePicture'), updateUser) // User should be protected to update their own profile
-    .delete(protect, admin, deleteUser); // Admin only to delete
+  .put(protect, upload.single('profilePicture'), updateUser) // User should be protected to update their own profile
+  .delete(protect, admin, deleteUser); // Admin only to delete
 
 // Route to reset a user's password to a default value
 router.put('/:id/reset-password', protect, admin, resetUserPassword);
@@ -63,6 +82,18 @@ router.put('/:id/change-password', protect, changePassword);
 router.get('/registrations/pending', protect, admin, getPendingRegistrations);
 router.post('/registrations/:id/approve', protect, admin, approveRegistration);
 router.delete('/registrations/:id/reject', protect, admin, rejectRegistration);
+
+
+// --- Admin Bulk User Management Routes ---
+router.post('/bulk-import', protect, admin, csvUpload.single('file'), bulkImportUsers);
+router.post('/bulk-delete', protect, admin, bulkDeleteUsers);
+router.post('/bulk-reset-password', protect, admin, bulkResetPasswords);
+router.post('/bulk-update-roles', protect, admin, bulkUpdateRoles);
+router.post('/search', protect, admin, searchUsers);
+
+// --- User Activity & Status ---
+router.get('/:id/activity', protect, admin, getUserActivityHistory);
+router.put('/:id/toggle-status', protect, admin, toggleUserStatus);
 
 // --- Admin Pending Requests Route ---
 router.get('/pendingRequests', protect, admin, getAllPendingRequests);

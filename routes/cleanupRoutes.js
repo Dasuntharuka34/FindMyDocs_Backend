@@ -1,7 +1,9 @@
 import express from 'express';
 import {
     getCleanupStats,
-    executeCleanup
+    executeCleanup,
+    getOrphanedFiles,
+    deleteOrphanedFiles
 } from '../controllers/cleanupController.js';
 import { protect, admin } from '../middleware/authMiddleware.js';
 

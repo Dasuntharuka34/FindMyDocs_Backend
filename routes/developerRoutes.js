@@ -3,7 +3,9 @@ import {
     getErrorLogs,
     clearErrorLogs,
     runQuery,
-    getSystemStats
+    getSystemStats,
+    getApiDocs,
+    clearCache
 } from '../controllers/developerController.js';
 import { protect, admin } from '../middleware/authMiddleware.js';
 

@@ -1,6 +1,12 @@
 import express from 'express';
 const router = express.Router();
-import { generateReport } from '../controllers/reportController.js';
+import {
+    generateReport,
+    getCustomReport,
+    createScheduledReport,
+    getScheduledReports,
+    deleteScheduledReport
+} from '../controllers/reportController.js';
 import { protect, admin } from '../middleware/authMiddleware.js';
 
 // @route   POST /api/reports/generate

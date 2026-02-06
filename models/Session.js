@@ -40,8 +40,6 @@ const sessionSchema = new mongoose.Schema({
 
 // Index for efficient querying
 sessionSchema.index({ userId: 1, isActive: 1 });
-sessionSchema.index({ token: 1 });
-sessionSchema.index({ expiresAt: 1 });
 
 // Auto-delete expired sessions
 sessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });

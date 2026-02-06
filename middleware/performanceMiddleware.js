@@ -10,8 +10,6 @@ const performanceMiddleware = (req, res, next) => {
             console.warn(`[PERF] Slow Request: ${req.method} ${req.originalUrl} - ${timeInMs}ms`);
             // We could log this to a PerformanceLog model if needed
         }
-
-        res.set('X-Response-Time', `${timeInMs}ms`);
     });
 
     next();

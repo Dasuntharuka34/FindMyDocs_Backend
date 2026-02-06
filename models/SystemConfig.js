@@ -37,7 +37,6 @@ const systemConfigSchema = new mongoose.Schema({
 
 // Index for efficient querying
 systemConfigSchema.index({ category: 1 });
-systemConfigSchema.index({ key: 1 });
 
 const SystemConfig = mongoose.model('SystemConfig', systemConfigSchema);
 

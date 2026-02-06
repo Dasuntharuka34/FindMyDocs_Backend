@@ -50,6 +50,18 @@ router.get('/', getExcuseRequests);
 // @route   GET /api/excuserequests/byUser/:userId
 router.get('/byUser/:userId', protect, getExcuseRequestsByUserId);
 
+// @desc    Get all pending excuse approvals
+// @route   GET /api/excuserequests/pendingApprovals
+router.get('/pendingApprovals', protect, getPendingExcuseApprovals);
+
+// @desc    Bulk Approve Excuse Requests
+// @route   POST /api/excuserequests/bulk-approve
+router.post('/bulk-approve', protect, bulkApproveExcuseRequests);
+
+// @desc    Bulk Reject Excuse Requests
+// @route   POST /api/excuserequests/bulk-reject
+router.post('/bulk-reject', protect, bulkRejectExcuseRequests);
+
 // @desc    Approve a excuse request
 // @route   PUT /api/excuserequests/:id/approve
 router.put('/:id/approve', protect, approveExcuseRequest);
@@ -63,17 +75,6 @@ router.put('/:id/reject', protect, rejectExcuseRequest);
 router.route('/:id')
   .get(protect, getExcuseRequestById)
   .delete(protect, admin, deleteExcuseRequest); // Admin only
-
-
-router.get('/pendingApprovals', protect, getPendingExcuseApprovals);
-
-// @desc    Bulk Approve Excuse Requests
-// @route   POST /api/excuserequests/bulk-approve
-router.post('/bulk-approve', protect, bulkApproveExcuseRequests);
-
-// @desc    Bulk Reject Excuse Requests
-// @route   POST /api/excuserequests/bulk-reject
-router.post('/bulk-reject', protect, bulkRejectExcuseRequests);
 
 
 export default router;

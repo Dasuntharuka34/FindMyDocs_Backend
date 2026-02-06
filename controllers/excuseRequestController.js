@@ -85,7 +85,9 @@ const createExcuseRequest = async (req, res) => {
       { name: "Pending Dean Approval", approverRole: "Dean" }
     ];
 
-    const initialStageIndex = submitterRoleToInitialStageIndex[studentRole] || (stages.length > 2 ? 1 : 0);
+    // Determine initial stage based on the submitter's role (case-insensitive)
+    const normalizedRole = studentRole.charAt(0).toUpperCase() + studentRole.slice(1).toLowerCase();
+    const initialStageIndex = submitterRoleToInitialStageIndex[normalizedRole] ?? (stages.length > 2 ? 1 : 0);
     const initialStatus = stages[initialStageIndex].name;
     const firstApproverRole = stages[initialStageIndex].approverRole;
 

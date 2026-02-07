@@ -3,7 +3,8 @@ import {
     getWorkflows,
     getWorkflowByType,
     saveWorkflow,
-    initializeWorkflows
+    initializeWorkflows,
+    deleteWorkflow
 } from '../controllers/workflowController.js';
 import { protect, admin } from '../middleware/authMiddleware.js';
 
@@ -13,5 +14,6 @@ router.get('/', protect, admin, getWorkflows);
 router.get('/:requestType', getWorkflowByType);
 router.post('/', protect, admin, saveWorkflow);
 router.post('/initialize', protect, admin, initializeWorkflows);
+router.delete('/:requestType', protect, admin, deleteWorkflow);
 
 export default router;

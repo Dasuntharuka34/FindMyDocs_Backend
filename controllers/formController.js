@@ -3,6 +3,7 @@ import FormSubmission from '../models/FormSubmission.js';
 import ExcuseRequest from '../models/ExcuseRequest.js';
 import LeaveRequest from '../models/LeaveRequest.js';
 import Letter from '../models/Letter.js';
+import Role from '../models/Role.js';
 import mongoose from 'mongoose';
 
 // Internal helper to ensure system forms exist
@@ -144,7 +145,16 @@ const getAvailableForms = async (req, res) => {
     // Attempt to seed if called by a user (req.user might be present if protected)
     // If not protected, we use a default ID or skip seeding if it's already done
     await seedSystemForms();
-    const forms = await Form.find({ isEnabled: true });
+
+    // Get user role from request (if authenticated)
+    const userRole = req.user?.role || 'Student'; // Default to Student if not authenticated
+
+    // Filter forms by enabled status and role visibility
+    const forms = await Form.find({
+      isEnabled: true,
+      visibleToRoles: { $in: [userRole] }
+    });
+
     res.json(forms);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -268,6 +278,52 @@ const createNewVersion = async (req, res) => {
   }
 };
 
+// @desc    Update form role visibility
+// @route   PUT /api/forms/:id/roles
+// @access  Private/Admin
+const updateFormRoles = async (req, res) => {
+  try {
+    const { visibleToRoles } = req.body;
+    const form = await Form.findById(req.params.id);
+
+    if (!form) {
+      return res.status(404).json({ message: 'Form not found' });
+    }
+
+    // Get all valid roles from database
+    const validRolesData = await Role.find().select('name');
+    const validRoles = validRolesData.map(role => role.name);
+    
+    // Validate roles
+    const invalidRoles = visibleToRoles.filter(role => !validRoles.includes(role));
+
+    if (invalidRoles.length > 0) {
+      return res.status(400).json({ message: `Invalid roles: ${invalidRoles.join(', ')}` });
+    }
+
+    form.visibleToRoles = visibleToRoles;
+    const updatedForm = await form.save();
+
+    res.json(updatedForm);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+// @desc    Get available roles for form visibility
+// @route   GET /api/forms/roles/available
+// @access  Private/Admin
+const getAvailableRoles = async (req, res) => {
+  try {
+    // Get all available roles from the Role collection
+    const roles = await Role.find().select('name').sort({ name: 1 });
+    const roleNames = roles.map(role => role.name);
+    res.json(roleNames);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 export {
   getForms,
   getFormById,
@@ -277,5 +333,7 @@ export {
   updateFormStatus,
   getAvailableForms,
   getFormAnalytics,
-  createNewVersion
+  createNewVersion,
+  updateFormRoles,
+  getAvailableRoles
 };

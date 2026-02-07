@@ -94,3 +94,21 @@ export const initializeWorkflows = async (req, res) => {
         res.status(500).json({ message: 'Error initializing workflows', error: error.message });
     }
 };
+
+// @desc    Delete workflow
+// @route   DELETE /api/workflows/:requestType
+// @access  Private/Admin
+export const deleteWorkflow = async (req, res) => {
+    try {
+        const { requestType } = req.params;
+        const workflow = await Workflow.findOneAndDelete({ requestType });
+        
+        if (!workflow) {
+            return res.status(404).json({ message: 'Workflow not found' });
+        }
+        
+        res.json({ message: `Workflow for ${requestType} deleted successfully`, deletedWorkflow: workflow });
+    } catch (error) {
+        res.status(500).json({ message: 'Error deleting workflow', error: error.message });
+    }
+};

@@ -69,6 +69,10 @@ const formSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  visibleToRoles: {
+    type: [String],
+    default: [],
+  },
 });
 
 const Form = mongoose.model('Form', formSchema);

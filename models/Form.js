@@ -65,6 +65,10 @@ const formSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
+  isSystemForm: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const Form = mongoose.model('Form', formSchema);

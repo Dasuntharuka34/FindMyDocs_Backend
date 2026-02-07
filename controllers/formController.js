@@ -5,11 +5,34 @@ import LeaveRequest from '../models/LeaveRequest.js';
 import Letter from '../models/Letter.js';
 import mongoose from 'mongoose';
 
+// Internal helper to ensure system forms exist
+const seedSystemForms = async (adminId) => {
+  const systemForms = [
+    { name: 'Medical Certificate', description: 'Request for medical absence excuse' },
+    { name: 'Leave Request', description: 'Formal request for leave of absence' },
+    { name: 'Transcript Request', description: 'Request for official academic transcript' },
+    { name: 'Internship Letter', description: 'Request for internship recommendation or approval' }
+  ];
+
+  for (const sf of systemForms) {
+    const exists = await Form.findOne({ name: sf.name });
+    if (!exists) {
+      await Form.create({
+        ...sf,
+        isSystemForm: true,
+        createdBy: adminId || '000000000000000000000000', // Fallback ID if no admin yet
+        fields: [] // System forms handle their own fields hardcoded for now
+      });
+    }
+  }
+};
+
 // @desc    Get all forms
 // @route   GET /api/forms
 // @access  Private/Admin
 const getForms = async (req, res) => {
   try {
+    await seedSystemForms(req.user._id);
     const forms = await Form.find({}).populate('createdBy', 'name');
     res.json(forms);
   } catch (error) {
@@ -81,7 +104,10 @@ const deleteForm = async (req, res) => {
   try {
     const form = await Form.findById(req.params.id);
     if (form) {
-      await form.remove();
+      if (form.isSystemForm) {
+        return res.status(403).json({ message: 'System forms cannot be deleted' });
+      }
+      await Form.deleteOne({ _id: req.params.id });
       res.json({ message: 'Form removed' });
     } else {
       res.status(404).json({ message: 'Form not found' });
@@ -115,6 +141,9 @@ const updateFormStatus = async (req, res) => {
 // @access  Public
 const getAvailableForms = async (req, res) => {
   try {
+    // Attempt to seed if called by a user (req.user might be present if protected)
+    // If not protected, we use a default ID or skip seeding if it's already done
+    await seedSystemForms();
     const forms = await Form.find({ isEnabled: true });
     res.json(forms);
   } catch (error) {

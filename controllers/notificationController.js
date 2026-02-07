@@ -10,19 +10,21 @@ const createAndSendNotification = async ({ userId, message, type }) => {
     type,
   });
 
-  const createdNotification = await notification.save();
+  try {
+    const createdNotification = await notification.save();
 
-  // Fetch user to get email for sending notification
-  const user = await User.findById(userId);
-  if (user && user.email) {
-    try {
-      await sendNotificationEmail(user.email, message);
-    } catch (emailError) {
-      console.warn('Failed to send notification email:', emailError.message);
-      // Continue execution even if email fails
+    // Fetch user to get email for sending notification
+    const user = await User.findById(userId);
+    if (user && user.email) {
+      sendNotificationEmail(user.email, message).catch(emailError => {
+        console.warn('Failed to send notification email:', emailError.message);
+      });
     }
+    return createdNotification;
+  } catch (err) {
+    console.error('Error saving notification:', err);
+    throw err;
   }
-  return createdNotification;
 };
 
 // @desc    Get all notifications for a specific user

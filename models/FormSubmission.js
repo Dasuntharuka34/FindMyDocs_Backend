@@ -23,7 +23,6 @@ const formSubmissionSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['Pending', 'Approved', 'Rejected'],
     default: 'Pending',
   },
   currentStageIndex: {
@@ -40,6 +39,23 @@ const formSubmissionSchema = new mongoose.Schema({
   rejectionReason: {
     type: String,
   },
+  approvals: [
+    {
+      approverRole: String,
+      approverId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      },
+      approverName: String,
+      status: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected'],
+        default: 'pending',
+      },
+      approvedAt: Date,
+      comment: String,
+    },
+  ],
 });
 
 const FormSubmission = mongoose.model('FormSubmission', formSubmissionSchema);

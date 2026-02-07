@@ -18,7 +18,7 @@ const formTemplateSchema = new mongoose.Schema({
             label: String,
             type: {
                 type: String,
-                enum: ['text', 'textarea', 'select', 'file', 'date'],
+                enum: ['text', 'textarea', 'select', 'file', 'date', 'checkbox', 'radio'],
             },
             options: [String],
             validation: {

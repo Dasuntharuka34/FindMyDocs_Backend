@@ -166,11 +166,18 @@ const getLetterById = async (req, res) => {
 // @access  Private (Staff, Lecturer, HOD, Dean, VC, Admin)
 const getPendingApprovals = async (req, res) => {
     try {
+        const { status } = req.params;
         if (!req.user || !req.user.role) {
             return res.status(401).json({ message: 'User role not found' });
         }
         const userRole = req.user.role;
         const isSystemAdmin = userRole.toLowerCase() === 'admin';
+
+        // If a specific status is requested (e.g., 'Approved'), just filter by that status
+        if (status) {
+            const letters = await Letter.find({ status }).sort({ submittedDate: -1 });
+            return res.json(letters);
+        }
 
         const workflow = await Workflow.findOne({ requestType: 'Letter', isActive: true });
         if (!workflow) {

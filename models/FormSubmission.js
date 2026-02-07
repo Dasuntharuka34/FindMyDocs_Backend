@@ -26,6 +26,10 @@ const formSubmissionSchema = new mongoose.Schema({
     enum: ['Pending', 'Approved', 'Rejected'],
     default: 'Pending',
   },
+  currentStageIndex: {
+    type: Number,
+    default: 0
+  },
   approver: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

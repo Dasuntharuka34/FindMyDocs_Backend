@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import Session from '../models/Session.js';
 import Role from '../models/Role.js';
 import { logSecurityEvent } from '../utils/securityLogger.js';
 
@@ -20,6 +21,16 @@ const protect = async (req, res, next) => {
       if (!req.user) {
         return res.status(401).json({ message: 'Not authorized, user not found' });
       }
+
+      // Verify active session exists for this token
+      const session = await Session.findOne({ token, isActive: true });
+      if (!session) {
+        return res.status(401).json({ message: 'Not authorized, session is invalid or has been terminated' });
+      }
+
+      // Update last activity
+      session.lastActivity = new Date();
+      await session.save();
 
       next();
     } catch (error) {

@@ -1,5 +1,8 @@
 import Form from '../models/Form.js';
 import FormSubmission from '../models/FormSubmission.js';
+import ExcuseRequest from '../models/ExcuseRequest.js';
+import LeaveRequest from '../models/LeaveRequest.js';
+import Letter from '../models/Letter.js';
 import mongoose from 'mongoose';
 
 // @desc    Get all forms
@@ -124,10 +127,11 @@ const getAvailableForms = async (req, res) => {
 // @access  Private/Admin
 const getFormAnalytics = async (req, res) => {
   try {
-    const analytics = await FormSubmission.aggregate([
+    // 1. Existing Dynamic Form Analytics
+    const formAnalytics = await FormSubmission.aggregate([
       {
         $group: {
-          _id: { formId: '$form', status: '$status' },
+          _id: { formId: '$form', status: { $ifNull: ['$status', 'Pending'] } },
           count: { $sum: 1 }
         }
       },
@@ -140,11 +144,10 @@ const getFormAnalytics = async (req, res) => {
         }
       },
       {
-        $unwind: '$formInfo'
-      },
-      {
         $project: {
-          formName: '$formInfo.name',
+          formName: {
+            $ifNull: [{ $arrayElemAt: ['$formInfo.name', 0] }, "Unknown Form"]
+          },
           status: '$_id.status',
           count: 1,
           _id: 0
@@ -152,9 +155,57 @@ const getFormAnalytics = async (req, res) => {
       }
     ]);
 
-    res.json(analytics);
+    // 2. Helper to get hardcoded request analytics
+    const getHardcodedAnalytics = async (Model, formName) => {
+      return await Model.aggregate([
+        {
+          $project: {
+            normalizedStatus: {
+              $cond: {
+                if: { $in: ['$status', ['Approved', 'Rejected']] },
+                then: '$status',
+                else: 'Pending'
+              }
+            }
+          }
+        },
+        {
+          $group: {
+            _id: '$normalizedStatus',
+            count: { $sum: 1 }
+          }
+        },
+        {
+          $project: {
+            formName: formName,
+            status: '$_id',
+            count: 1,
+            _id: 0
+          }
+        }
+      ]);
+    };
+
+    // 3. Fetch all analytics in parallel
+    const [excuseAnalytics, leaveAnalytics, letterAnalytics] = await Promise.all([
+      getHardcodedAnalytics(ExcuseRequest, 'Excuse Request'),
+      getHardcodedAnalytics(LeaveRequest, 'Leave Request'),
+      getHardcodedAnalytics(Letter, 'Letter Request')
+    ]);
+
+    // 4. Combine all results
+    const consolidatedAnalytics = [
+      ...formAnalytics,
+      ...excuseAnalytics,
+      ...leaveAnalytics,
+      ...letterAnalytics
+    ];
+
+    console.log(`Consolidated ${consolidatedAnalytics.length} analytics records.`);
+
+    res.json(consolidatedAnalytics);
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching form analytics', error: error.message });
+    res.status(500).json({ message: 'Error fetching consolidated analytics', error: error.message });
   }
 };
 

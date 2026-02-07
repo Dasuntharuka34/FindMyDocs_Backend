@@ -50,7 +50,9 @@ router.get('/', protect, admin, getLeaveRequests);
 
 // @desc    Get all pending leave requests for the user's role
 // @route   GET /api/leaverequests/pendingApprovals
+// @route   GET /api/leaverequests/pendingApprovals/:status
 router.get('/pendingApprovals', protect, getPendingLeaveRequests);
+router.get('/pendingApprovals/:status', protect, getPendingLeaveRequests);
 
 // @desc    Approve a leave request
 // @route   PUT /api/leaverequests/:id/approve

@@ -191,11 +191,18 @@ const createLeaveRequest = async (req, res) => {
 // @access  Private
 const getPendingLeaveRequests = async (req, res) => {
   try {
+    const { status } = req.params;
     if (!req.user || !req.user.role) {
       return res.status(401).json({ message: 'User role not found' });
     }
     const userRole = req.user.role;
     const isSystemAdmin = userRole.toLowerCase() === 'admin';
+
+    // If a specific status is requested (e.g., 'Approved'), just filter by that status
+    if (status) {
+      const requests = await LeaveRequest.find({ status }).sort({ submittedDate: -1 });
+      return res.status(200).json(requests);
+    }
 
     // Fetch dynamic workflow
     const workflow = await Workflow.findOne({ requestType: 'Leave', isActive: true });

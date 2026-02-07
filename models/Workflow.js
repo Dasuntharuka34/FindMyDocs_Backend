@@ -19,8 +19,7 @@ const workflowSchema = new mongoose.Schema({
     requestType: {
         type: String,
         required: true,
-        unique: true,
-        enum: ['Excuse', 'Leave', 'Letter']
+        unique: true
     },
     description: {
         type: String

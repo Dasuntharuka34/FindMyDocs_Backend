@@ -229,11 +229,18 @@ const getExcuseRequestsByUserId = async (req, res) => {
 // --- GET PENDING APPROVALS (Updated to be role-based with defensive checks) ---
 const getPendingExcuseApprovals = async (req, res) => {
   try {
+    const { status } = req.params;
     if (!req.user || !req.user.role) {
       return res.status(401).json({ message: 'User role not found' });
     }
     const userRole = req.user.role;
     const isSystemAdmin = userRole.toLowerCase() === 'admin';
+
+    // If a specific status is requested (e.g., 'Approved'), just filter by that status
+    if (status) {
+      const requests = await ExcuseRequest.find({ status }).sort({ submittedDate: -1 });
+      return res.json(requests);
+    }
 
     const workflow = await Workflow.findOne({ requestType: 'Excuse', isActive: true });
     if (!workflow) {

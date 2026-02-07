@@ -55,12 +55,14 @@ import {
   bulkUpdateRoles,
   getUserActivityHistory,
   toggleUserStatus,
-  searchUsers
+  searchUsers,
+  logoutUser
 } from '../controllers/userController.js';
 
 // --- Public Routes ---
 router.post('/register', registerUser);
 router.post('/login', authUser);
+router.post('/logout', protect, logoutUser);
 
 // --- Admin User Management Routes ---
 router.route('/').get(protect, admin, getUsers).post(protect, admin, createUser);

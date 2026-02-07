@@ -52,7 +52,9 @@ router.get('/byUser/:userId', protect, getExcuseRequestsByUserId);
 
 // @desc    Get all pending excuse approvals
 // @route   GET /api/excuserequests/pendingApprovals
+// @route   GET /api/excuserequests/pendingApprovals/:status
 router.get('/pendingApprovals', protect, getPendingExcuseApprovals);
+router.get('/pendingApprovals/:status', protect, getPendingExcuseApprovals);
 
 // @desc    Bulk Approve Excuse Requests
 // @route   POST /api/excuserequests/bulk-approve

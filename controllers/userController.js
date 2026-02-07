@@ -1,5 +1,6 @@
 import { sendEmail } from '../utils/mailService.js';
 import User from '../models/User.js';
+import Session from '../models/Session.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import Registration from '../models/Registration.js';
@@ -165,6 +166,23 @@ const authUser = async (req, res) => {
     }
 
     const token = generateToken(user._id);
+
+    // Create session record
+    try {
+      await Session.create({
+        userId: user._id,
+        token,
+        ipAddress: req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress,
+        userAgent: req.headers['user-agent'],
+        deviceType: req.headers['user-agent']?.toLowerCase().includes('mobile') ? 'MOBILE' : 'WEB',
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour (same as JWT)
+        isActive: true,
+        lastActivity: new Date()
+      });
+    } catch (sessionError) {
+      console.error('Failed to create session record:', sessionError);
+      // We don't block login if session recording fails, but it's good to log
+    }
 
     await logSecurityEvent({
       eventType: 'LOGIN_SUCCESS',
@@ -909,6 +927,35 @@ const searchUsers = async (req, res) => {
   }
 };
 
+// @desc    Logout user & invalidate session
+// @route   POST /api/users/logout
+// @access  Private
+const logoutUser = async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+
+    if (token) {
+      await Session.findOneAndUpdate(
+        { token },
+        { isActive: false },
+        { new: true }
+      );
+    }
+
+    await logSecurityEvent({
+      eventType: 'LOGOUT',
+      userId: req.user?._id,
+      userEmail: req.user?.email,
+      success: true
+    }, req);
+
+    res.json({ message: 'Logged out successfully' });
+  } catch (error) {
+    console.error('Error during logout:', error);
+    res.status(500).json({ message: 'Server error during logout', error: error.message });
+  }
+};
+
 export {
   approveRegistration,
   authUser,
@@ -928,6 +975,7 @@ export {
   bulkUpdateRoles,
   getUserActivityHistory,
   toggleUserStatus,
-  searchUsers
+  searchUsers,
+  logoutUser
 };
 

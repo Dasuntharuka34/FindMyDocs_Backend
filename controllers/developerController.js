@@ -92,25 +92,88 @@ const getSystemStats = async (req, res) => {
 const getApiDocs = async (req, res) => {
     try {
         const routes = [];
-        req.app._router.stack.forEach((middleware) => {
-            if (middleware.route) { // routes registered directly on the app
-                routes.push({
-                    path: middleware.route.path,
-                    method: Object.keys(middleware.route.methods)[0].toUpperCase()
-                });
-            } else if (middleware.name === 'router' && middleware.handle && middleware.handle.stack) { // router middleware
-                middleware.handle.stack.forEach((handler) => {
-                    if (handler.route) {
-                        const path = handler.route.path;
-                        const method = Object.keys(handler.route.methods)[0].toUpperCase();
-                        routes.push({ path, method });
-                    }
-                });
+
+        // Helper to clean regex strings into paths
+        const extractPathFromRegexp = (regexp) => {
+            if (!regexp) return '';
+            const regStr = regexp.toString();
+
+            // Handle fast_slash (default /)
+            if (regStr === '/^\\/?(?=\\/|$)/i') return '';
+
+            // Try to match standard Express route regex format: /^\/api\/users\/?(?=\/|$)/i
+            // We want to extract /api/users
+            const match = regStr.match(/^\/\\(.*?)\\\/\?(\(\?=\/\|\$\))?\/i/);
+            if (match && match[1]) {
+                return '/' + match[1].replace(/\\/g, '');
             }
-        });
+
+            // Fallback: simpler cleaning for varying express versions/regexes
+            let cleaner = regStr
+                .replace(/^\/\^/, '')            // remove leading /^
+                .replace(/\\\/\?\(\?=\/\|\$\)\/i$/, '') // remove trailing \/?(?=/|$)/i
+                .replace(/\\/g, '')              // remove escapes
+                .replace(/\/$/g, '');            // remove trailing slash
+
+            if (cleaner.startsWith('/')) return cleaner;
+
+            return '';
+        };
+
+        const processStack = (stack, basePath = '') => {
+            if (!stack || !Array.isArray(stack)) return;
+
+            stack.forEach(layer => {
+                if (layer.route) {
+                    const path = basePath + layer.route.path;
+                    const methods = Object.keys(layer.route.methods).join(', ').toUpperCase();
+
+                    // Extract Access Level & Description
+                    let access = 'Public';
+                    let description = 'description';
+
+                    if (layer.route.stack && layer.route.stack.length > 0) {
+                        const stackNames = layer.route.stack.map(h => h.name);
+
+                        if (stackNames.includes('protect')) {
+                            access = stackNames.includes('admin') ? 'Admin' : 'Private';
+                        }
+
+                        // Try to find the last handler name for description
+                        // Filter out common middleware names
+                        const handlerName = layer.route.stack.find(h =>
+                            !['protect', 'prev', 'next', 'admin', 'upload', 'csvUpload', '<anonymous>', 'bound dispatch', 'ensureDbConnection'].includes(h.name) &&
+                            h.name !== 'router'
+                        )?.name;
+
+                        if (handlerName) {
+                            // Convert camelCase to human readable
+                            description = handlerName
+                                .replace(/([A-Z])/g, ' $1')
+                                .replace(/^./, str => str.toUpperCase());
+                        }
+                    }
+
+                    routes.push({ path, method: methods, access, description });
+                } else if (layer.name === 'router' && layer.handle.stack) {
+                    let mountedPath = extractPathFromRegexp(layer.regexp);
+                    processStack(layer.handle.stack, basePath + mountedPath);
+                }
+            });
+        };
+
+        if (req.app._router && req.app._router.stack) {
+            processStack(req.app._router.stack);
+        } else if (req.app.router && req.app.router.stack) {
+            processStack(req.app.router.stack);
+        } else if (req.app.handle && req.app.handle.stack) {
+            processStack(req.app.handle.stack);
+        }
+
         res.json(routes);
     } catch (error) {
-        res.status(500).json({ message: 'Error fetching API docs', error: error.message });
+        console.error('Error generating API docs:', error);
+        res.json([{ path: 'Error generating docs', method: 'ERROR', details: error.message }]);
     }
 };
 

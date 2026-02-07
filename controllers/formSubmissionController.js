@@ -22,6 +22,13 @@ const createSubmission = async (req, res) => {
       data,
     });
 
+    // Check for dynamic workflow
+    const workflow = await Workflow.findOne({ requestType: form.name, isActive: true });
+    if (workflow && workflow.steps && workflow.steps.length > 0) {
+      submission.status = workflow.steps[0].name;
+      submission.currentStageIndex = 0;
+    }
+
     const createdSubmission = await submission.save();
 
     // Send an email with all unread notifications for the submitting user
@@ -66,10 +73,38 @@ const getSubmissions = async (req, res) => {
 
 // @desc    Get pending form submissions (for admins/approvers)
 // @route   GET /api/form-submissions/pending
-// @access  Private/Admin
+// @access  Private
 const getPendingSubmissions = async (req, res) => {
   try {
-    const submissions = await FormSubmission.find({ status: 'Pending' }).populate('form', 'name').populate('submittedBy', 'name');
+    const userRole = req.user.role;
+    const isSystemAdmin = userRole.toLowerCase() === 'admin';
+
+    // Fetch all active workflows to identify potential pending statuses for this role
+    const workflows = await Workflow.find({ isActive: true });
+
+    let pendingStatuses = ['Pending']; // Always include default Pending
+
+    workflows.forEach(wf => {
+      wf.steps.forEach(step => {
+        if (step.approverRole.toLowerCase() === userRole.toLowerCase()) {
+          pendingStatuses.push(step.name);
+        }
+      });
+    });
+
+    let query = {};
+    if (!isSystemAdmin) {
+      query = { status: { $in: pendingStatuses } };
+    } else {
+      // Admin sees everything not final
+      query = { status: { $nin: ['Approved', 'Rejected'] } };
+    }
+
+    const submissions = await FormSubmission.find(query)
+      .populate('form', 'name')
+      .populate('submittedBy', 'name')
+      .sort({ submittedAt: -1 });
+
     res.json(submissions);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -80,35 +115,66 @@ const getPendingSubmissions = async (req, res) => {
 // @route   GET /api/form-submissions/my-submissions
 // @access  Private
 const getMySubmissions = async (req, res) => {
-    try {
-      const submissions = await FormSubmission.find({ submittedBy: req.user._id }).populate('form', 'name');
-      res.json(submissions);
-    } catch (error) {
-      res.status(500).json({ message: error.message });
-    }
-  };
+  try {
+    const submissions = await FormSubmission.find({ submittedBy: req.user._id })
+      .populate('form', 'name')
+      .sort({ submittedAt: -1 });
+    res.json(submissions);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
 
 // @desc    Update submission status (approve/reject)
 // @route   PUT /api/form-submissions/:id/status
-// @access  Private/Admin
+// @access  Private
 const updateSubmissionStatus = async (req, res) => {
   try {
     const { status, rejectionReason } = req.body;
-    const submission = await FormSubmission.findById(req.params.id);
+    const submission = await FormSubmission.findById(req.params.id).populate('form');
 
-    if (submission) {
+    if (!submission) {
+      return res.status(404).json({ message: 'Submission not found' });
+    }
+
+    // Check for workflow
+    const workflow = await Workflow.findOne({ requestType: submission.form.name, isActive: true });
+
+    if (workflow) {
+      const stages = workflow.steps;
+      const currentStage = stages[submission.currentStageIndex];
+
+      // Authorization check for the current stage
+      if (req.user.role !== currentStage.approverRole && req.user.role.toLowerCase() !== 'admin') {
+        return res.status(403).json({ message: 'Not authorized for this approval stage' });
+      }
+
+      if (status === 'Approved') {
+        const nextStageIndex = submission.currentStageIndex + 1;
+        if (nextStageIndex >= stages.length) {
+          submission.status = 'Approved';
+          submission.currentStageIndex = stages.length;
+        } else {
+          submission.status = stages[nextStageIndex].name;
+          submission.currentStageIndex = nextStageIndex;
+        }
+      } else if (status === 'Rejected') {
+        submission.status = 'Rejected';
+        submission.rejectionReason = rejectionReason;
+      }
+    } else {
+      // No workflow, standard approve/reject
       submission.status = status;
-      submission.approver = req.user._id;
-      submission.approvedAt = Date.now();
       if (status === 'Rejected') {
         submission.rejectionReason = rejectionReason;
       }
-
-      const updatedSubmission = await submission.save();
-      res.json(updatedSubmission);
-    } else {
-      res.status(404).json({ message: 'Submission not found' });
     }
+
+    submission.approver = req.user._id;
+    submission.approvedAt = Date.now();
+
+    const updatedSubmission = await submission.save();
+    res.json(updatedSubmission);
   } catch (error) {
     res.status(400).json({ message: `Error updating submission status: ${error.message}` });
   }

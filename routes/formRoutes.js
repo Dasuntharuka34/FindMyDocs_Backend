@@ -14,7 +14,9 @@ import {
 import { protect, admin } from '../middleware/authMiddleware.js';
 
 router.route('/').get(protect, admin, getForms).post(protect, admin, createForm);
-router.route('/available').get(protect, getAvailableForms);
+
+router.get('/analytics', protect, admin, getFormAnalytics);
+
 router
   .route('/:id')
   .get(protect, getFormById)
@@ -22,7 +24,6 @@ router
   .delete(protect, admin, deleteForm);
 router.route('/:id/status').put(protect, admin, updateFormStatus);
 
-router.get('/analytics', protect, admin, getFormAnalytics);
 router.post('/:id/version', protect, admin, createNewVersion);
 
 export default router;

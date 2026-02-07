@@ -98,7 +98,7 @@ const getApiDocs = async (req, res) => {
                     path: middleware.route.path,
                     method: Object.keys(middleware.route.methods)[0].toUpperCase()
                 });
-            } else if (middleware.name === 'router') { // router middleware
+            } else if (middleware.name === 'router' && middleware.handle && middleware.handle.stack) { // router middleware
                 middleware.handle.stack.forEach((handler) => {
                     if (handler.route) {
                         const path = handler.route.path;

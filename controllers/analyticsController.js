@@ -5,6 +5,7 @@ import Letter from '../models/Letter.js';
 import Registration from '../models/Registration.js';
 import AuditLog from '../models/AuditLog.js';
 import SecurityLog from '../models/SecurityLog.js';
+import Session from '../models/Session.js';
 
 // @desc    Get activity dashboard metrics
 // @route   GET /api/analytics/activity
@@ -113,7 +114,6 @@ const getSystemHealth = async (req, res) => {
         });
 
         // Get active sessions count
-        const Session = mongoose.model('Session');
         const activeSessions = await Session.countDocuments({ isActive: true });
 
         res.json({
